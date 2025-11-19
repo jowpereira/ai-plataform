@@ -1,0 +1,82 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Virtualenv
+.venv/
+venv/
+ENV/
+env/
+.env
+.env.*
+.github/
+docs/
+
+# Pytest
+.pytest_cache/
+
+# MyPy
+.mypy_cache/
+
+# Coverage
+htmlcov/
+.coverage
+.coverage.*
+
+# IDEs
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs and state
+logs/
+*.log
+state/
+
+# Editor temp files
+*~
+*.swp
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Local settings
+local_settings.py
+
+# Node
+node_modules/
+
+# Ignore secrets files
+secrets.json
+
+# Allow explicit include of files if needed
+!README.md

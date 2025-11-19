@@ -1,0 +1,92 @@
+{
+  "workspace": {
+    "name": "generic-worker-lab",
+    "description": "Fluxo multiagente com roteamento generico controlado via JSON",
+    "max_iterations": 6
+  },
+  "resources": {
+    "tools": {
+      "fetch_weather": {
+        "id": "fetch_weather",
+        "function_path": "scripts.worker_test.tools:fetch_weather",
+        "enabled": true
+      },
+      "summarize_guidelines": {
+        "id": "summarize_guidelines",
+        "function_path": "scripts.worker_test.tools:summarize_guidelines",
+        "enabled": true
+      },
+      "compute_costs": {
+        "id": "compute_costs",
+        "function_path": "scripts.worker_test.tools:compute_costs",
+        "enabled": true
+      }
+    },
+    "global_middleware": [],
+    "mcp_servers": {},
+    "context_provider": {
+      "type": "default"
+    }
+  },
+  "agents": {
+    "router": {
+      "id": "router",
+      "name": "Dynamic Router",
+      "client_type": "openai",
+      "model": "$OPENAI_MODEL",
+      "instructions": "Você avalia a solicitação, decide quais ferramentas ou especialistas devem atuar e sempre fornece um resumo estruturado na saída.",
+      "tools": ["fetch_weather", "summarize_guidelines"],
+      "middleware": [],
+      "metadata": {
+        "description": "Faz triagem leve e usa ferramentas básicas antes de repassar.",
+        "emit_output": false
+      },
+      "enabled": true
+    },
+    "specialist": {
+      "id": "specialist",
+      "name": "Ops Specialist",
+      "client_type": "openai",
+      "model": "$OPENAI_MODEL",
+      "instructions": "Você detalha ações operacionais com listas numeradas e valida dados com as ferramentas disponíveis.",
+      "tools": ["summarize_guidelines", "compute_costs"],
+      "middleware": [],
+      "metadata": {
+        "description": "Cria plano operacional apoiado em ferramentas internas.",
+        "emit_output": false
+      },
+      "enabled": true
+    },
+    "synthesizer": {
+      "id": "synthesizer",
+      "name": "Executive Synthesizer",
+      "client_type": "openai",
+      "model": "$OPENAI_MODEL",
+      "instructions": "Você transforma toda a conversa em um briefing executivo com próximos passos, métricas e alertas.",
+      "tools": ["summarize_guidelines"],
+      "middleware": [],
+      "metadata": {
+        "description": "Entrega uma resposta final executiva.",
+        "emit_output": true
+      },
+      "enabled": true
+    }
+  },
+  "orchestration": {
+    "type": "sequential",
+    "start": "router",
+    "edges": [
+      {
+        "kind": "direct",
+        "source": "router",
+        "target": "specialist"
+      },
+      {
+        "kind": "direct",
+        "source": "specialist",
+        "target": "synthesizer"
+      }
+    ],
+    "terminal_nodes": ["synthesizer"]
+  }
+}
