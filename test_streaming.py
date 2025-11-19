@@ -39,7 +39,7 @@ async def main():
     print("=" * 60)
     
     query = "What's the weather in Paris?"
-    aggregator = EventAggregator(verbosity="normal")
+    aggregator = EventAggregator(verbosity="debug")
     
     async for message in aggregator.process_stream(worker.run_stream(query)):
         icon = {"executor_start": "🔄", "executor_complete": "✅", "workflow_output": "📦"}.get(message.event_type, "•")
