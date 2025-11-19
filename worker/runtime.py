@@ -22,6 +22,7 @@ from worker.config import (
     SequentialConfig,
     WorkspaceConfig,
 )
+from worker.config.models import ModelConfig
 from worker.factories import AgentFactory, MiddlewareFactory, ResourceFactory, WorkflowFactory
 from worker.logging_filters import configure_workflow_logging
 from worker.observability import ObservabilityManager
@@ -38,12 +39,14 @@ class WorkerConfig:
         agents: dict[str, AgentConfig],
         orchestration: OrchestrationConfig,
         observability: ObservabilityConfig,
+        models: ModelConfig | None = None,
     ):
         self.workspace = workspace
         self.resources = resources
         self.agents = agents
         self.orchestration = orchestration
         self.observability = observability
+        self.models = models or ModelConfig()
 
     @classmethod
     def from_json(cls, path: str | Path) -> "WorkerConfig":
@@ -63,6 +66,7 @@ class WorkerConfig:
 
         workspace = WorkspaceConfig(**data["workspace"])
         resources = ResourcesConfig(**data["resources"])
+        models = ModelConfig(**data.get("models", {}))
         agents = {aid: AgentConfig(**cfg) for aid, cfg in data["agents"].items()}
         observability = ObservabilityConfig(**data.get("observability", {}))
 
@@ -98,6 +102,7 @@ class WorkerConfig:
             agents=agents,
             orchestration=orchestration,
             observability=observability,
+            models=models,
         )
 
 
@@ -123,11 +128,12 @@ class GenericWorker:
         IMPORTANTE: Middleware é aplicado no nível do agente individual.
         AgentFactory injeta global_middleware + agent_middleware em cada agente.
         """
-        # Create AgentFactory com global middleware
+        # Create AgentFactory com global middleware e model config
         self.agent_factory = AgentFactory(
             resource_factory=self.resource_factory,
             middleware_factory=self.middleware_factory,
             global_middleware_configs=self.config.resources.global_middleware,
+            models_config=self.config.models,
         )
 
         # Observability e contexto precisam estar prontos antes de criar workflows

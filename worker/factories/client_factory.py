@@ -41,7 +41,15 @@ class OpenAIClientFactory(ClientFactory):
 
     def create_client(self, model_id: str, **kwargs) -> OpenAIChatClient:
         """Cria OpenAI client."""
-        return OpenAIChatClient(model_id=model_id, **kwargs)
+        # Apenas parâmetros de client são aceitos
+        client_params = {k: v for k, v in kwargs.items() if k in ["timeout", "max_retries", "api_key", "base_url"]}
+        
+        if client_params:
+            from openai import AsyncOpenAI
+            openai_client = AsyncOpenAI(**client_params)
+            return OpenAIChatClient(model_id=model_id, async_client=openai_client)
+        
+        return OpenAIChatClient(model_id=model_id)
 
     def supports_client_type(self, client_type: str) -> bool:
         return client_type == "openai"
@@ -62,11 +70,14 @@ class AzureOpenAIClientFactory(ClientFactory):
             
         base_url = f"{endpoint.rstrip('/')}/openai/deployments/{model_id}"
         
+        # Apenas parâmetros de client são aceitos
+        client_params = {k: v for k, v in kwargs.items() if k in ["timeout", "max_retries"]}
+        
         azure_client = AsyncOpenAI(
             api_key=os.getenv("AZURE_OPENAI_API_KEY"),
             base_url=base_url,
             default_query={"api-version": api_version},
-            **kwargs
+            **client_params
         )
         
         return OpenAIChatClient(

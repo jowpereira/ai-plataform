@@ -1,7 +1,7 @@
 """Agent configuration models."""
 
 from typing import Any, Literal
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class MemoryConfig(BaseModel):
@@ -30,11 +30,12 @@ class AgentConfig(BaseModel):
 
     id: str = Field(..., description="Unique agent identifier")
     name: str = Field(..., description="Agent name")
-    client_type: Literal["openai", "azure"] = Field(
-        "openai",
-        description="Chat client provider",
+    client_type: Literal["openai", "azure"] | None = Field(
+        None,
+        description="Chat client provider (optional if using model_profile)",
     )
-    model: str = Field(..., description="Model identifier (e.g., 'gpt-4o-mini' ou '$OPENAI_MODEL')")
+    model: str | None = Field(None, description="Model identifier (optional if using model_profile)")
+    model_profile: str | None = Field(None, description="Model profile ID from models.profiles")
     instructions: str = Field("", description="System prompt")
     tools: list[str] = Field(
         default_factory=list,
@@ -51,3 +52,17 @@ class AgentConfig(BaseModel):
         description="Metadados adicionais (description, temperature, max_tokens, etc.)",
     )
     enabled: bool = True
+
+    @model_validator(mode="after")
+    def validate_model_config(self):
+        """Validate model configuration."""
+        has_direct = self.client_type and self.model
+        has_profile = self.model_profile
+        
+        if not has_direct and not has_profile:
+            raise ValueError("Agent must have either (client_type + model) or model_profile")
+        
+        if has_direct and has_profile:
+            raise ValueError("Agent cannot have both direct config and model_profile")
+            
+        return self

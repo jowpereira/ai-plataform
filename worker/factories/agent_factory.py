@@ -5,6 +5,7 @@ from typing import Any
 
 from agent_framework import ChatAgent
 from worker.config import AgentConfig
+from worker.config.models import ModelConfig
 from worker.factories.client_factory import ClientFactoryRegistry
 from worker.factories.middleware_factory import MiddlewareFactory
 from worker.factories.resource_factory import ResourceFactory
@@ -25,11 +26,13 @@ class AgentFactory:
         middleware_factory: MiddlewareFactory,
         global_middleware_configs: list[Any],
         client_factory_registry: ClientFactoryRegistry | None = None,
+        models_config: ModelConfig | None = None,
     ):
         self.resource_factory = resource_factory
         self.middleware_factory = middleware_factory
         self.global_middleware_configs = global_middleware_configs
         self.client_factory_registry = client_factory_registry or ClientFactoryRegistry()
+        self.models_config = models_config or ModelConfig()
         self._agent_cache: dict[str, ChatAgent] = {}
 
     def create_agent(self, config: AgentConfig) -> ChatAgent:
@@ -47,15 +50,14 @@ class AgentFactory:
         if not config.enabled:
             raise ValueError(f"Agent {config.id} está desabilitado")
 
-        # Resolver model ID
-        model_id = self._resolve_model(config)
+        # Resolver configuração de modelo
+        client_type, model_id, client_params = self._resolve_model_config(config)
 
         # Criar chat client usando factory registry
         client = self.client_factory_registry.create_client(
-            client_type=config.client_type,
+            client_type=client_type,
             model_id=model_id,
-            # Passar parâmetros adicionais do metadata se necessário
-            **config.metadata.get("client_params", {})
+            **client_params
         )
 
         # Obter ferramentas
@@ -115,39 +117,47 @@ class AgentFactory:
                 agents[agent_id] = self.create_agent(config)
         return agents
 
-    def _resolve_model(self, config: AgentConfig) -> str:
-        """Resolve model ID de config ou variável de ambiente.
+    def _resolve_model_config(self, config: AgentConfig) -> tuple[str, str, dict]:
+        """Resolve configuração de modelo (direto ou via profile).
 
         Args:
             config: Configuração do agente
 
         Returns:
-            Model ID resolvido
+            Tuple (client_type, model_id, client_params)
 
         Raises:
-            ValueError: se model não puder ser resolvido
+            ValueError: se configuração for inválida
         """
-        # 1. Modelo explícito na config
-        if config.model and not config.model.startswith("$"):
-            return config.model
-
-        # 2. Referência a variável de ambiente ($ENV_VAR)
-        if config.model and config.model.startswith("$"):
-            env_var = config.model[1:]  # Remove $
-            value = os.getenv(env_var)
-            if value:
-                return value
-            raise ValueError(f"Variável de ambiente {env_var} não definida para agent {config.id}")
-
-        # 3. Default OPENAI_MODEL
-        default_model = os.getenv("OPENAI_MODEL")
-        if default_model:
-            return default_model
-
-        raise ValueError(
-            f"Não foi possível determinar model_id para agent {config.id}. "
-            "Configure config.model ou defina OPENAI_MODEL."
-        )
+        # Configuração direta
+        if config.client_type and config.model:
+            model_id = self._resolve_model_id(config.model, config.id)
+            client_params = config.metadata.get("client_params", {})
+            return config.client_type, model_id, client_params
+        
+        # Model profile
+        if config.model_profile:
+            if config.model_profile not in self.models_config.profiles:
+                raise ValueError(f"Model profile '{config.model_profile}' não encontrado")
+            
+            profile = self.models_config.profiles[config.model_profile]
+            model_id = self._resolve_model_id(profile.model, config.id)
+            client_params = {**profile.default_params, **config.metadata.get("client_params", {})}
+            return profile.client_type, model_id, client_params
+        
+        raise ValueError(f"Agent {config.id} deve ter client_type+model ou model_profile")
+    
+    def _resolve_model_id(self, model: str, agent_id: str) -> str:
+        """Resolve model ID de string ou env var."""
+        if not model.startswith("$"):
+            return model
+        
+        env_var = model[1:]
+        value = os.getenv(env_var)
+        if value:
+            return value
+        
+        raise ValueError(f"Variável {env_var} não definida para agent {agent_id}")
 
     def clear_cache(self):
         """Limpa cache de agentes."""
