@@ -32,8 +32,8 @@
     "router": {
       "id": "router",
       "name": "Dynamic Router",
-      "client_type": "openai",
-      "model": "$OPENAI_MODEL",
+      "client_type": "azure",
+      "model": "$AZURE_OPENAI_DEPLOYMENT_NAME",
       "instructions": "Você avalia a solicitação, decide quais ferramentas ou especialistas devem atuar e sempre fornece um resumo estruturado na saída.",
       "tools": ["fetch_weather", "summarize_guidelines"],
       "middleware": [],
@@ -46,8 +46,8 @@
     "specialist": {
       "id": "specialist",
       "name": "Ops Specialist",
-      "client_type": "openai",
-      "model": "$OPENAI_MODEL",
+      "client_type": "azure",
+      "model": "$AZURE_OPENAI_DEPLOYMENT_NAME",
       "instructions": "Você detalha ações operacionais com listas numeradas e valida dados com as ferramentas disponíveis.",
       "tools": ["summarize_guidelines", "compute_costs"],
       "middleware": [],
@@ -60,8 +60,8 @@
     "synthesizer": {
       "id": "synthesizer",
       "name": "Executive Synthesizer",
-      "client_type": "openai",
-      "model": "$OPENAI_MODEL",
+      "client_type": "azure",
+      "model": "$AZURE_OPENAI_DEPLOYMENT_NAME",
       "instructions": "Você transforma toda a conversa em um briefing executivo com próximos passos, métricas e alertas.",
       "tools": ["summarize_guidelines"],
       "middleware": [],

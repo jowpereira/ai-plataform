@@ -30,7 +30,7 @@ class AgentConfig(BaseModel):
 
     id: str = Field(..., description="Unique agent identifier")
     name: str = Field(..., description="Agent name")
-    client_type: Literal["azure", "github", "openai", "anthropic", "google"] = Field(
+    client_type: Literal["openai", "azure"] = Field(
         "openai",
         description="Chat client provider",
     )

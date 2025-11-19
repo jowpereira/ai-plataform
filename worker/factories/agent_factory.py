@@ -4,9 +4,8 @@ import os
 from typing import Any
 
 from agent_framework import ChatAgent
-from agent_framework.openai import OpenAIChatClient
-
 from worker.config import AgentConfig
+from worker.factories.client_factory import ClientFactoryRegistry
 from worker.factories.middleware_factory import MiddlewareFactory
 from worker.factories.resource_factory import ResourceFactory
 
@@ -25,10 +24,12 @@ class AgentFactory:
         resource_factory: ResourceFactory,
         middleware_factory: MiddlewareFactory,
         global_middleware_configs: list[Any],
+        client_factory_registry: ClientFactoryRegistry | None = None,
     ):
         self.resource_factory = resource_factory
         self.middleware_factory = middleware_factory
         self.global_middleware_configs = global_middleware_configs
+        self.client_factory_registry = client_factory_registry or ClientFactoryRegistry()
         self._agent_cache: dict[str, ChatAgent] = {}
 
     def create_agent(self, config: AgentConfig) -> ChatAgent:
@@ -49,23 +50,13 @@ class AgentFactory:
         # Resolver model ID
         model_id = self._resolve_model(config)
 
-        # Criar chat client baseado no tipo
-        if config.client_type == "openai":
-            client = OpenAIChatClient(model_id=model_id)
-        elif config.client_type == "azure":
-            # TODO: implementar Azure client
-            raise NotImplementedError("Azure client será implementado")
-        elif config.client_type == "github":
-            # TODO: implementar GitHub client
-            raise NotImplementedError("GitHub client será implementado")
-        elif config.client_type == "anthropic":
-            # TODO: implementar Anthropic client
-            raise NotImplementedError("Anthropic client será implementado")
-        elif config.client_type == "google":
-            # TODO: implementar Google client
-            raise NotImplementedError("Google client será implementado")
-        else:
-            raise ValueError(f"Client type {config.client_type} não suportado")
+        # Criar chat client usando factory registry
+        client = self.client_factory_registry.create_client(
+            client_type=config.client_type,
+            model_id=model_id,
+            # Passar parâmetros adicionais do metadata se necessário
+            **config.metadata.get("client_params", {})
+        )
 
         # Obter ferramentas
         tools = self.resource_factory.get_tools(config.tools) if config.tools else []
