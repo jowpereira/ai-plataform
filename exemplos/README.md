@@ -26,4 +26,4 @@ uv run python run.py --config exemplos/<arquivo>.json --input "<seu input>"
 ## Estrutura dos Arquivos
 
 Todos os arquivos seguem o schema de configuração definido em `src/worker/config.py`.
-As ferramentas utilizadas estão definidas em `ferramentas_mock/basicas.py`.
+As ferramentas utilizadas estão definidas em `mock_tools/basic.py`.

@@ -14,7 +14,7 @@
     "tools": [
       {
         "id": "verificar_status",
-        "path": "ferramentas_mock.basicas:verificar_status_sistema",
+        "path": "mock_tools.basic:verificar_status_sistema",
         "description": "Verifica se o sistema está ONLINE ou OFFLINE"
       }
     ]

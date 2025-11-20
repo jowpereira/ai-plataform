@@ -14,7 +14,7 @@
     "tools": [
       {
         "id": "consultar_clima",
-        "path": "ferramentas_mock.basicas:consultar_clima",
+        "path": "mock_tools.basic:consultar_clima",
         "description": "Consulta o clima"
       }
     ]

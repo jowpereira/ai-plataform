@@ -14,7 +14,7 @@
     "tools": [
       {
         "id": "verificar_resolucao",
-        "path": "ferramentas_mock.basicas:verificar_resolucao",
+        "path": "mock_tools.basic:verificar_resolucao",
         "description": "Verifica se a correção funcionou"
       }
     ]
