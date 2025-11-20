@@ -183,6 +183,19 @@ class WorkflowEngine:
             
             self._workflow = builder.build()
 
+        # Atribuir nome ao workflow se disponível na configuração
+        if self._workflow and self.config.name:
+            try:
+                self._workflow.name = self.config.name
+            except AttributeError:
+                pass
+            
+            # Tentar definir label também, se suportado
+            # try:
+            #     self._workflow.label = self.config.name
+            # except AttributeError:
+            #     pass
+
     async def run(self, initial_input: str) -> Any:
         """Executa o workflow usando o motor nativo."""
         if not self._workflow:

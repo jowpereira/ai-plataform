@@ -6,6 +6,7 @@ requires-python = ">=3.10"
 dependencies = [
     "agent-framework>=1.0.0b251114",
     "agent-framework-declarative",
+    "agent-framework-devui",
     "pydantic>=2.7",
     "python-dotenv>=1.0.1",
     "pyyaml>=6.0.3",

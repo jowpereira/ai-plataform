@@ -1,14 +1,54 @@
 import asyncio
+import os
+from dataclasses import dataclass
 from typing import Any, List, Union, AsyncIterable
-from agent_framework import BaseAgent, AgentRunResponse, ChatMessage
+from agent_framework import BaseAgent, AgentRunResponse, ChatMessage, Executor, handler, response_handler, WorkflowContext
+from pydantic import BaseModel, Field
 
-class HumanAgent(BaseAgent):
+@dataclass
+class HumanInputRequest:
+    prompt: str
+    instructions: str = ""
+
+class HumanInputResponse(BaseModel):
+    content: str = Field(description="Sua resposta")
+
+class HumanAgent(Executor):
     def __init__(self, id: str, name: str = "Human", instructions: str = ""):
-        super().__init__(id=id, name=name, description=instructions)
+        super().__init__(id=id)
+        self.name = name
         self.instructions = instructions
 
-    async def run(self, messages: Union[str, List[Any]], *, thread: Any = None, **kwargs) -> AgentRunResponse:
+    @handler
+    async def handle_message(self, message: Union[ChatMessage, List[ChatMessage], str], ctx: WorkflowContext[HumanInputRequest]) -> None:
         # Extrair texto para exibir ao humano
+        prompt_text = ""
+        if isinstance(message, str):
+            prompt_text = message
+        elif isinstance(message, list) and message:
+            last = message[-1]
+            prompt_text = str(last.text) if hasattr(last, "text") else str(last)
+        elif isinstance(message, ChatMessage):
+            prompt_text = message.text
+        else:
+            prompt_text = str(message)
+        
+        print(f"\n👤 [Entrada Humana Necessária] Passo: {self.id}")
+        print(f"❓ Prompt: {prompt_text}")
+        
+        # Send request for human input (triggers HIL in DevUI)
+        req = HumanInputRequest(prompt=str(prompt_text), instructions=self.instructions)
+        await ctx.send_message(req)
+
+    @response_handler
+    async def handle_response(self, request: HumanInputRequest, response: HumanInputResponse, ctx: WorkflowContext[ChatMessage]) -> None:
+        print(f"👤 Resposta recebida: {response.content}")
+        # Return the human response as a ChatMessage
+        await ctx.send_message(ChatMessage(role="user", text=response.content))
+
+    # Manter compatibilidade com BaseAgent se necessário (para testes fora do workflow engine novo)
+    async def run(self, messages: Union[str, List[Any]], *, thread: Any = None, **kwargs) -> AgentRunResponse:
+        # Fallback para modo console legado se chamado diretamente
         prompt_text = ""
         if isinstance(messages, str):
             prompt_text = messages
@@ -16,21 +56,12 @@ class HumanAgent(BaseAgent):
             last = messages[-1]
             prompt_text = str(last.content) if hasattr(last, "content") else str(last)
         
-        print(f"\n👤 [Entrada Humana Necessária] Passo: {self.id}")
+        print(f"\n👤 [Entrada Humana Necessária (Legacy)] Passo: {self.id}")
         print(f"❓ Prompt: {prompt_text}")
-        if self.instructions:
-            print(f"ℹ️ Instruções: {self.instructions}")
-            
+        
         user_response = await asyncio.to_thread(input, ">> ")
         
-        # Retornar resposta no formato esperado pelo framework
-        # O framework espera uma lista de mensagens ou um valor.
         return AgentRunResponse(
-            messages=[ChatMessage(role="user", content=user_response)],
+            messages=[ChatMessage(role="user", text=user_response)],
             value=user_response
         )
-
-    async def run_stream(self, messages: Union[str, List[Any]], *, thread: Any = None, **kwargs) -> AsyncIterable[Any]:
-        """Implementação de streaming para compatibilidade com AgentProtocol."""
-        response = await self.run(messages, thread=thread, **kwargs)
-        yield response
