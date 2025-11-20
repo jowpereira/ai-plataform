@@ -1,0 +1,95 @@
+{
+  "version": "1.0",
+  "name": "complex-state-machine",
+  "resources": {
+    "models": {
+      "gpt-4o-mini": {
+        "type": "openai",
+        "deployment": "gpt-4o-mini",
+        "env_vars": {
+          "OPENAI_API_KEY": "${OPENAI_API_KEY}"
+        }
+      }
+    },
+    "tools": [
+      {
+        "id": "verificar_resolucao",
+        "path": "ferramentas_mock.basicas:verificar_resolucao",
+        "description": "Verifica se a correção funcionou"
+      }
+    ]
+  },
+  "agents": [
+    {
+      "id": "triagem",
+      "role": "Triagem N1",
+      "model": "gpt-4o-mini",
+      "instructions": "Você recebe o problema. Se for técnico, chame 'handoff_to_tecnico'. Se for financeiro, chame 'handoff_to_financeiro'.",
+      "tools": []
+    },
+    {
+      "id": "tecnico",
+      "role": "Suporte Técnico",
+      "model": "gpt-4o-mini",
+      "instructions": "Você tenta resolver o problema técnico propondo uma solução. IMEDIATAMENTE após propor, você DEVE chamar 'handoff_to_qa' para verificar se funcionou.",
+      "tools": []
+    },
+    {
+      "id": "qa",
+      "role": "Analista de Qualidade",
+      "model": "gpt-4o-mini",
+      "instructions": "Use a ferramenta 'verificar_resolucao'. Se o retorno for 'SUCESSO', responda ao usuário que está resolvido. Se for 'FALHA', chame 'handoff_to_gerente' para escalar.",
+      "tools": ["verificar_resolucao"]
+    },
+    {
+      "id": "gerente",
+      "role": "Gerente de Crise",
+      "model": "gpt-4o-mini",
+      "instructions": "Peça desculpas pelo transtorno e ofereça um crédito de compensação.",
+      "tools": []
+    },
+    {
+      "id": "financeiro",
+      "role": "Financeiro",
+      "model": "gpt-4o-mini",
+      "instructions": "Trate questões de pagamento.",
+      "tools": []
+    }
+  ],
+  "workflow": {
+    "type": "handoff",
+    "start_step": "passo_triagem",
+    "steps": [
+      {
+        "id": "passo_triagem",
+        "agent": "triagem",
+        "input_template": "{{user_input}}",
+        "transitions": ["passo_tecnico", "passo_financeiro"]
+      },
+      {
+        "id": "passo_tecnico",
+        "agent": "tecnico",
+        "input_template": "Resolva: {{user_input}}",
+        "transitions": ["passo_qa"]
+      },
+      {
+        "id": "passo_qa",
+        "agent": "qa",
+        "input_template": "Verifique o ticket: {{user_input}}",
+        "transitions": ["passo_gerente"]
+      },
+      {
+        "id": "passo_gerente",
+        "agent": "gerente",
+        "input_template": "Cliente insatisfeito com falha técnica.",
+        "transitions": []
+      },
+      {
+        "id": "passo_financeiro",
+        "agent": "financeiro",
+        "input_template": "Questão financeira.",
+        "transitions": []
+      }
+    ]
+  }
+}

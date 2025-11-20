@@ -14,12 +14,12 @@
     "tools": [
       {
         "id": "consultar_clima",
-        "path": "ferramentas.basicas:consultar_clima",
+        "path": "ferramentas_mock.basicas:consultar_clima",
         "description": "Consulta o clima de uma localização"
       },
       {
         "id": "resumir_diretrizes",
-        "path": "ferramentas.basicas:resumir_diretrizes",
+        "path": "ferramentas_mock.basicas:resumir_diretrizes",
         "description": "Resume diretrizes"
       }
     ]

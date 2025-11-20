@@ -27,17 +27,23 @@ Este documento rastrea o progresso detalhado do desenvolvimento do módulo worke
     - [ ] Validar execução ponta a ponta (Hello World).
 
 ## Fase 2: Workflows Avançados
-- [ ] **Suporte a Paralelismo**
-    - [ ] Adicionar tipo `parallel` no schema de workflow.
-    - [ ] Implementar construção de branches paralelos no `WorkflowEngine`.
-- [ ] **Roteamento Dinâmico**
-    - [ ] Adicionar tipo `router` no schema.
-    - [ ] Implementar lógica de decisão baseada em output de agente.
+- [x] **Suporte a Paralelismo**
+    - [x] Adicionar tipo `parallel` no schema de workflow.
+    - [x] Implementar construção de branches paralelos no `WorkflowEngine`.
+- [x] **Roteamento Dinâmico**
+    - [x] Adicionar tipo `router` no schema.
+    - [x] Implementar lógica de decisão baseada em output de agente.
+- [x] **Group Chat e Colaboração**
+    - [x] Adicionar tipo `group_chat` no schema.
+    - [x] Implementar `GroupChatBuilder` com gerenciador automático.
+- [x] **Handoff (Transição de Agentes)**
+    - [x] Adicionar tipo `handoff` no schema.
+    - [x] Implementar transições explícitas.
 
 ## Fase 3: Human-in-the-loop e Persistência
-- [ ] **Interação Humana**
-    - [ ] Adicionar step type `human_approval`.
-    - [ ] Implementar mecanismo de callback para input externo.
+- [x] **Interação Humana**
+    - [x] Adicionar step type `human_approval`.
+    - [x] Implementar mecanismo de callback para input externo.
 - [ ] **Persistência**
     - [ ] Integrar mecanismo de checkpoint do framework (se disponível) ou customizado.
 
@@ -48,3 +54,14 @@ Este documento rastrea o progresso detalhado do desenvolvimento do módulo worke
 - [ ] **Telemetria**
     - [ ] Estruturar logs em JSON.
     - [ ] Adicionar tracing básico.
+
+## Fase 5: Futuro - Agentes Autônomos (Magentic)
+> **Observação:** Esta fase foca na evolução de "Automação Determinística" para "Resolução de Problemas Autônoma".
+- [ ] **Planejamento Autônomo (Planner)**
+    - [ ] Criar novo tipo de workflow `autonomous` ou `magentic`.
+    - [ ] Implementar `MagenticBuilder` (ou similar) para geração dinâmica de steps.
+    - [ ] Suportar definição de "Objetivos" (Goals) ao invés de "Steps" fixos.
+- [ ] **Handoff Bidirecional**
+    - [ ] Suportar `enable_return_to_previous` para fluxos de suporte complexos.
+- [ ] **Agregação Inteligente (Map-Reduce)**
+    - [ ] Implementar `ConcurrentBuilder.with_aggregator` para sintetizar múltiplas respostas.

@@ -51,5 +51,3 @@ class TemplateMiddleware(AgentMiddleware):
                 messages[-1] = new_content # type: ignore
 
         await next(context)
-
-        await next(context)

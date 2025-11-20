@@ -14,12 +14,12 @@
     "tools": [
       {
         "id": "consultar_clima",
-        "path": "ferramentas.basicas:consultar_clima",
+        "path": "ferramentas_mock.basicas:consultar_clima",
         "description": "Consulta o clima"
       },
       {
         "id": "calcular_custos",
-        "path": "ferramentas.basicas:calcular_custos",
+        "path": "ferramentas_mock.basicas:calcular_custos",
         "description": "Calcula custos"
       }
     ]
