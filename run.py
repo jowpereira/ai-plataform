@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import asyncio
 import os
@@ -8,15 +8,15 @@ from pathlib import Path
 import typer
 from dotenv import load_dotenv
 
-# Add project root to sys.path to allow imports from src
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+# Adiciona a raiz do projeto ao sys.path para permitir imports de src
+PROJECT_ROOT = Path(__file__).resolve().parents[0]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.worker.config import ConfigLoader
 from src.worker.engine import WorkflowEngine
 
-app = typer.Typer(add_completion=False, help="Runner genérico para workers do Microsoft Agent Framework.")
+app = typer.Typer(add_completion=False, help="Executor genérico para workers do Microsoft Agent Framework.")
 
 
 @app.command()
@@ -25,49 +25,49 @@ def run(
         "exemplos/sequential.json",
         "--config",
         "-c",
-        help="Path to the worker configuration file",
+        help="Caminho para o arquivo de configuração do worker",
     ),
     input_text: str = typer.Option(
-        "London",
+        "Londres",
         "--input",
         "-i",
-        help="Initial input for the workflow",
+        help="Input inicial para o workflow",
     ),
 ):
     """
-    Runs the generic worker with the specified configuration.
+    Executa o worker genérico com a configuração especificada.
     """
-    # Load environment variables
+    # Carregar variáveis de ambiente
     load_dotenv()
 
-    # Resolve absolute path
+    # Resolver caminho absoluto
     abs_config_path = os.path.abspath(config_path)
     
-    print(f" Loading configuration from: {abs_config_path}")
+    print(f"🔄 Carregando configuração de: {abs_config_path}")
     
     try:
         loader = ConfigLoader(abs_config_path)
         config = loader.load()
-        print(f" Configuration '{config.name}' loaded successfully.")
+        print(f"✅ Configuração '{config.name}' carregada com sucesso.")
     except Exception as e:
-        print(f" Failed to load configuration: {e}")
+        print(f"❌ Falha ao carregar configuração: {e}")
         raise typer.Exit(code=1)
 
     async def _run_async():
-        print(" Initializing Workflow Engine...")
+        print("⚙️ Inicializando Motor de Workflow...")
         try:
             engine = WorkflowEngine(config)
             
-            print(f" Starting workflow execution with input: '{input_text}'")
+            print(f"🚀 Iniciando execução do workflow com input: '{input_text}'")
             result = await engine.run(initial_input=input_text)
             
-            print("\n Workflow Execution Completed!")
+            print("\n✅ Execução do Workflow Concluída!")
             print("=" * 30)
-            print(f"Result: {result}")
+            print(f"Resultado: {result}")
             print("=" * 30)
             
         except Exception as e:
-            print(f"\n Runtime Error: {e}")
+            print(f"\n❌ Erro de Execução: {e}")
             import traceback
             traceback.print_exc()
             raise typer.Exit(code=1)

@@ -1,0 +1,46 @@
+{
+  "version": "1.0",
+  "name": "Group Chat Example",
+  "resources": {
+    "models": {
+      "gpt-4o-mini": {
+        "type": "openai",
+        "deployment": "gpt-4o-mini"
+      }
+    },
+    "tools": []
+  },
+  "agents": [
+    {
+      "id": "researcher",
+      "role": "Pesquisador",
+      "model": "gpt-4o-mini",
+      "instructions": "Você é um pesquisador. Encontre informações sobre o tópico.",
+      "tools": []
+    },
+    {
+      "id": "writer",
+      "role": "Escritor",
+      "model": "gpt-4o-mini",
+      "instructions": "Você é um escritor. Escreva um resumo com base na pesquisa.",
+      "tools": []
+    }
+  ],
+  "workflow": {
+    "type": "group_chat",
+    "steps": [
+      {
+        "id": "step1",
+        "type": "agent",
+        "agent": "researcher",
+        "input_template": "Pesquise sobre {{ input }}"
+      },
+      {
+        "id": "step2",
+        "type": "agent",
+        "agent": "writer",
+        "input_template": "Escreva um resumo"
+      }
+    ]
+  }
+}

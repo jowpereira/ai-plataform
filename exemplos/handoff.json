@@ -1,0 +1,64 @@
+{
+  "version": "1.0",
+  "name": "Handoff Example",
+  "resources": {
+    "models": {
+      "gpt-4o-mini": {
+        "type": "openai",
+        "deployment": "gpt-4o-mini"
+      }
+    },
+    "tools": []
+  },
+  "agents": [
+    {
+      "id": "triage",
+      "role": "Triagem",
+      "description": "Agente de triagem que roteia usuários para especialistas.",
+      "model": "gpt-4o-mini",
+      "instructions": "Você é um agente de triagem. Você DEVE usar as ferramentas fornecidas para rotear o usuário para o especialista apropriado. Se o usuário perguntar sobre cobrança, chame handoff_to_billing. Se sobre problemas técnicos, chame handoff_to_tech. Não responda à pergunta você mesmo.",
+      "tools": []
+    },
+    {
+      "id": "billing",
+      "role": "Especialista em Cobrança",
+      "description": "Especialista para questões de cobrança e faturas.",
+      "model": "gpt-4o-mini",
+      "instructions": "Você é um especialista em cobrança. Responda a perguntas sobre cobrança.",
+      "tools": []
+    },
+    {
+      "id": "tech",
+      "role": "Suporte Técnico",
+      "description": "Especialista para problemas técnicos.",
+      "model": "gpt-4o-mini",
+      "instructions": "Você é o suporte técnico. Responda a perguntas técnicas.",
+      "tools": []
+    }
+  ],
+  "workflow": {
+    "type": "handoff",
+    "start_step": "step_triage",
+    "steps": [
+      {
+        "id": "step_triage",
+        "type": "agent",
+        "agent": "triage",
+        "input_template": "{{ input }}",
+        "transitions": ["step_billing", "step_tech"]
+      },
+      {
+        "id": "step_billing",
+        "type": "agent",
+        "agent": "billing",
+        "input_template": "Questão de cobrança"
+      },
+      {
+        "id": "step_tech",
+        "type": "agent",
+        "agent": "tech",
+        "input_template": "Questão técnica"
+      }
+    ]
+  }
+}

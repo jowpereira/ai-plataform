@@ -1,0 +1,58 @@
+{
+  "version": "1.0",
+  "name": "lab-worker-generico",
+  "resources": {
+    "models": {
+      "gpt-4o-mini": {
+        "type": "openai",
+        "deployment": "gpt-4o-mini",
+        "env_vars": {
+          "OPENAI_API_KEY": "${OPENAI_API_KEY}"
+        }
+      }
+    },
+    "tools": [
+      {
+        "id": "consultar_clima",
+        "path": "ferramentas.basicas:consultar_clima",
+        "description": "Consulta o clima de uma localização"
+      },
+      {
+        "id": "resumir_diretrizes",
+        "path": "ferramentas.basicas:resumir_diretrizes",
+        "description": "Resume diretrizes"
+      }
+    ]
+  },
+  "agents": [
+    {
+      "id": "pesquisador",
+      "role": "Pesquisador",
+      "model": "gpt-4o-mini",
+      "instructions": "Você é um pesquisador. Use ferramentas para encontrar informações.",
+      "tools": ["consultar_clima"]
+    },
+    {
+      "id": "redator",
+      "role": "Redator",
+      "model": "gpt-4o-mini",
+      "instructions": "Você é um redator. Resuma as informações fornecidas.",
+      "tools": ["resumir_diretrizes"]
+    }
+  ],
+  "workflow": {
+    "type": "sequential",
+    "steps": [
+      {
+        "id": "passo_1",
+        "agent": "pesquisador",
+        "input_template": "Encontre informações do clima para: {{user_input}}"
+      },
+      {
+        "id": "passo_2",
+        "agent": "redator",
+        "input_template": "Com base neste clima: {{previous_output}}, escreva um conselho de viagem curto."
+      }
+    ]
+  }
+}

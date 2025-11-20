@@ -1,0 +1,66 @@
+{
+  "version": "1.0",
+  "name": "lab-worker-roteador",
+  "resources": {
+    "models": {
+      "gpt-4o-mini": {
+        "type": "openai",
+        "deployment": "gpt-4o-mini",
+        "env_vars": {
+          "OPENAI_API_KEY": "${OPENAI_API_KEY}"
+        }
+      }
+    },
+    "tools": [
+      {
+        "id": "consultar_clima",
+        "path": "ferramentas.basicas:consultar_clima",
+        "description": "Consulta o clima"
+      }
+    ]
+  },
+  "agents": [
+    {
+      "id": "agente_roteador",
+      "role": "Roteador",
+      "model": "gpt-4o-mini",
+      "instructions": "Você é um roteador. Se o usuário perguntar sobre clima, responda EXATAMENTE 'passo_clima'. Se perguntar qualquer outra coisa, responda EXATAMENTE 'passo_geral'. Não adicione nenhum outro texto.",
+      "tools": []
+    },
+    {
+      "id": "agente_clima",
+      "role": "Bot de Clima",
+      "model": "gpt-4o-mini",
+      "instructions": "Você é um bot de clima. Use a ferramenta para obter o clima.",
+      "tools": ["consultar_clima"]
+    },
+    {
+      "id": "agente_geral",
+      "role": "Bot Geral",
+      "model": "gpt-4o-mini",
+      "instructions": "Você é um assistente útil.",
+      "tools": []
+    }
+  ],
+  "workflow": {
+    "type": "router",
+    "start_step": "passo_roteamento",
+    "steps": [
+      {
+        "id": "passo_roteamento",
+        "agent": "agente_roteador",
+        "input_template": "Classifique esta solicitação: {{user_input}}"
+      },
+      {
+        "id": "passo_clima",
+        "agent": "agente_clima",
+        "input_template": "Obtenha o clima para: {{user_input}}"
+      },
+      {
+        "id": "passo_geral",
+        "agent": "agente_geral",
+        "input_template": "Responda isso: {{user_input}}"
+      }
+    ]
+  }
+}
