@@ -4,11 +4,8 @@
   "resources": {
     "models": {
       "gpt-4o-mini": {
-        "type": "openai",
-        "deployment": "gpt-4o-mini",
-        "env_vars": {
-          "OPENAI_API_KEY": "${OPENAI_API_KEY}"
-        }
+        "type": "azure-openai",
+        "deployment": "gpt-4o-mini"
       }
     },
     "tools": [

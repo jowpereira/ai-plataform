@@ -6,7 +6,7 @@ from agent_framework import Workflow, WorkflowBuilder, Case, Default, ExecutorCo
 
 from src.worker.config import WorkerConfig
 from src.worker.factory import AgentFactory
-from src.worker.middleware import TemplateMiddleware
+from src.worker.middleware import EnhancedTemplateMiddleware
 from src.worker.agents import HumanAgent
 
 
@@ -35,7 +35,7 @@ class WorkflowEngine:
                 # Criar middleware de template se necessário
                 middleware = []
                 if step.input_template:
-                    middleware.append(TemplateMiddleware(step.input_template))
+                    middleware.append(EnhancedTemplateMiddleware(step.input_template))
                 
                 # Criar agente com middleware
                 agent = self.agent_factory.create_agent(str(step.agent), middleware=middleware)
