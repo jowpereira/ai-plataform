@@ -4,7 +4,8 @@ from typing import Any, Callable, Dict, List, Optional
 
 from agent_framework import ChatAgent
 from agent_framework.openai import OpenAIChatClient
-# from agent_framework.azure import AzureOpenAIChatClient # Uncomment when available/needed
+from agent_framework.azure import AzureOpenAIChatClient
+from azure.identity import AzureCliCredential
 
 from src.worker.config import AgentConfig, ModelConfig, ToolConfig, WorkerConfig
 
@@ -50,11 +51,10 @@ class AgentFactory:
         if model_config.type == "openai":
             return OpenAIChatClient(model_id=model_config.deployment)
         elif model_config.type == "azure-openai":
-            # Placeholder para Azure - assumindo que as env vars padrão ou params sejam usados
-            # return AzureOpenAIChatClient(deployment_name=model_config.deployment)
-            # Por enquanto, usando OpenAIChatClient como fallback ou se a lib azure não estiver instalada
-            # Ajuste conforme a disponibilidade da lib agent_framework.azure
-            return OpenAIChatClient(model_id=model_config.deployment)
+            return AzureOpenAIChatClient(
+                credential=AzureCliCredential(),
+                deployment_name=model_config.deployment
+            )
         else:
             raise ValueError(f"Tipo de modelo não suportado: {model_config.type}")
 

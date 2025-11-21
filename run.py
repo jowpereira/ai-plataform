@@ -8,6 +8,13 @@ from pathlib import Path
 import typer
 from dotenv import load_dotenv
 
+# Configurar encoding UTF-8 para Windows
+if sys.platform == "win32":
+    import codecs
+    sys.stdout = codecs.getwriter("utf-8")(sys.stdout.detach())
+    sys.stderr = codecs.getwriter("utf-8")(sys.stderr.detach())
+    os.system("chcp 65001 > nul")
+
 # Adiciona a raiz do projeto ao sys.path para permitir imports de src
 PROJECT_ROOT = Path(__file__).resolve().parents[0]
 if str(PROJECT_ROOT) not in sys.path:
@@ -109,7 +116,7 @@ def run(
     # Resolver caminho absoluto
     abs_config_path = os.path.abspath(config_path)
     
-    print(f"🔄 Carregando configuração de: {abs_config_path}")
+    print(f"Carregando configuração de: {abs_config_path}")
     
     try:
         loader = ConfigLoader(abs_config_path)
