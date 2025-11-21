@@ -65,3 +65,12 @@ Este documento rastrea o progresso detalhado do desenvolvimento do módulo worke
     - [ ] Suportar `enable_return_to_previous` para fluxos de suporte complexos.
 - [ ] **Agregação Inteligente (Map-Reduce)**
     - [ ] Implementar `ConcurrentBuilder.with_aggregator` para sintetizar múltiplas respostas.
+
+## Fase 5: Interface e Ferramentas de Desenvolvimento
+
+- [x] **Integração MAIA (DevUI)**
+  - [x] Clonar e integrar código base do `agent_framework_devui`.
+  - [x] Configurar build do frontend (Vite + React).
+  - [x] Integrar servidor FastAPI ao `run.py`.
+  - [x] Rebranding completo para "MAIA".
+  - [x] Carregamento automático de exemplos do diretório `exemplos/`.

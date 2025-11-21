@@ -27,7 +27,7 @@ app = typer.Typer(add_completion=False, help="Executor genérico para workers do
 
 
 def load_all_examples_for_ui():
-    """Carrega todos os exemplos da pasta 'exemplos' para o DevUI."""
+    """Carrega todos os exemplos da pasta 'exemplos' para o MAIA."""
     examples_dir = PROJECT_ROOT / "exemplos"
     entities = []
 
@@ -74,14 +74,14 @@ def run(
         False,
         "--ui",
         "--dev",
-        help="Inicia o servidor DevUI com todos os exemplos (Ignora --config e --input)",
+        help="Inicia o servidor MAIA com todos os exemplos (Ignora --config e --input)",
     ),
 ):
     """
     Executa o worker genérico.
     
     Modo CLI (padrão): Executa um workflow específico com input via terminal.
-    Modo UI (--ui): Inicia o servidor DevUI para visualização e debug.
+    Modo UI (--ui): Inicia o servidor MAIA para visualização e debug.
     """
     # Carregar variáveis de ambiente
     load_dotenv()
@@ -89,14 +89,16 @@ def run(
     if dev_ui:
         # --- MODO UI ---
         try:
-            from agent_framework_devui import serve
-        except ImportError:
-            print("❌ Erro: 'agent-framework-devui' não está instalado.")
-            print("Instale com: uv pip install agent-framework-devui")
+            # Usando versão local do DevUI (src.devui)
+            from src.devui import serve
+            print("📦 Usando versão local do MAIA (src.devui)")
+        except ImportError as e:
+            print(f"❌ Erro ao importar 'src.devui': {e}")
+            print("Verifique se a pasta 'src/devui' existe e contém o arquivo '__init__.py'.")
             raise typer.Exit(code=1)
 
         os.environ["DEVUI_MODE"] = "true"
-        print("🚀 Iniciando DevUI com exemplos locais...")
+        print("🚀 Iniciando MAIA com exemplos locais...")
         
         entities = load_all_examples_for_ui()
         

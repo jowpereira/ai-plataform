@@ -2,6 +2,21 @@
 
 Todos os marcos notáveis deste projeto serão documentados neste arquivo.
 
+## [0.3.0] - 2025-11-21
+
+### Adicionado
+
+- **MAIA (Microsoft Agent Interface for Arnaldo):** Integração completa da interface de desenvolvimento (antiga DevUI).
+  - Interface gráfica para visualização e teste de agentes e workflows.
+  - Rebranding completo de "DevUI" para "MAIA".
+  - Execução via `python run.py --ui`.
+  - Build do frontend React integrado ao projeto.
+- Suporte a carregamento automático de exemplos na interface.
+
+### Alterado
+
+- Atualização do `run.py` para suportar a flag `--ui` e servir a aplicação web.
+
 ## [0.2.0] - 2025-11-20
 
 ### Adicionado
