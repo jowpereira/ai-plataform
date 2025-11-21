@@ -19,27 +19,93 @@ from src.worker.engine import WorkflowEngine
 app = typer.Typer(add_completion=False, help="Executor genérico para workers do Microsoft Agent Framework.")
 
 
+def load_all_examples_for_ui():
+    """Carrega todos os exemplos da pasta 'exemplos' para o DevUI."""
+    examples_dir = PROJECT_ROOT / "exemplos"
+    entities = []
+
+    if not examples_dir.exists():
+        print(f"Diretório de exemplos não encontrado: {examples_dir}")
+        return []
+
+    for file_path in examples_dir.glob("*.json"):
+        print(f"Carregando exemplo: {file_path.name}")
+        try:
+            loader = ConfigLoader(str(file_path))
+            config = loader.load()
+            
+            engine = WorkflowEngine(config)
+            engine.build()
+            
+            if engine._workflow:
+                entities.append(engine._workflow)
+                print(f"✅ Adicionado: {config.name} ({file_path.name})")
+            else:
+                print(f"⚠️ Falha ao construir workflow para {file_path.name}")
+                
+        except Exception as e:
+            print(f"❌ Erro ao carregar {file_path.name}: {e}")
+
+    return entities
+
+
 @app.command()
 def run(
     config_path: str = typer.Option(
         "exemplos/sequential.json",
         "--config",
         "-c",
-        help="Caminho para o arquivo de configuração do worker",
+        help="Caminho para o arquivo de configuração do worker (Modo CLI)",
     ),
     input_text: str = typer.Option(
         "Londres",
         "--input",
         "-i",
-        help="Input inicial para o workflow",
+        help="Input inicial para o workflow (Modo CLI)",
+    ),
+    dev_ui: bool = typer.Option(
+        False,
+        "--ui",
+        "--dev",
+        help="Inicia o servidor DevUI com todos os exemplos (Ignora --config e --input)",
     ),
 ):
     """
-    Executa o worker genérico com a configuração especificada.
+    Executa o worker genérico.
+    
+    Modo CLI (padrão): Executa um workflow específico com input via terminal.
+    Modo UI (--ui): Inicia o servidor DevUI para visualização e debug.
     """
     # Carregar variáveis de ambiente
     load_dotenv()
 
+    if dev_ui:
+        # --- MODO UI ---
+        try:
+            from agent_framework_devui import serve
+        except ImportError:
+            print("❌ Erro: 'agent-framework-devui' não está instalado.")
+            print("Instale com: uv pip install agent-framework-devui")
+            raise typer.Exit(code=1)
+
+        os.environ["DEVUI_MODE"] = "true"
+        print("🚀 Iniciando DevUI com exemplos locais...")
+        
+        entities = load_all_examples_for_ui()
+        
+        if not entities:
+            print("Nenhuma entidade carregada. Verifique os arquivos em 'exemplos/'.")
+            raise typer.Exit(code=1)
+        
+        print(f"Iniciando servidor com {len(entities)} entidades...")
+        for e in entities:
+            name = getattr(e, "name", "Unknown")
+            print(f" - Entity: {name} (Type: {type(e).__name__})")
+            
+        serve(entities=entities)
+        return
+
+    # --- MODO CLI ---
     # Resolver caminho absoluto
     abs_config_path = os.path.abspath(config_path)
     

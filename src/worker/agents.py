@@ -20,7 +20,7 @@ class HumanAgent(Executor):
         self.instructions = instructions
 
     @handler
-    async def handle_message(self, message: Union[ChatMessage, List[ChatMessage], str], ctx: WorkflowContext[HumanInputRequest]) -> None:
+    async def handle_message(self, message: Union[ChatMessage, List[ChatMessage], str], ctx: WorkflowContext[Union[HumanInputRequest, ChatMessage]]) -> None:
         # Extrair texto para exibir ao humano
         prompt_text = ""
         if isinstance(message, str):
@@ -33,6 +33,19 @@ class HumanAgent(Executor):
         else:
             prompt_text = str(message)
         
+        # Se não estiver no modo DevUI, usar input do console (CLI)
+        if not os.getenv("DEVUI_MODE"):
+            print(f"\n👤 [Entrada Humana Necessária] Passo: {self.id}")
+            print(f"❓ Prompt: {prompt_text}")
+            if self.instructions:
+                print(f"ℹ️ Instruções: {self.instructions}")
+            
+            user_response = await asyncio.to_thread(input, ">> ")
+            
+            # Enviar resposta diretamente para o próximo passo
+            await ctx.send_message(ChatMessage(role="user", text=user_response))
+            return
+
         print(f"\n👤 [Entrada Humana Necessária] Passo: {self.id}")
         print(f"❓ Prompt: {prompt_text}")
         

@@ -157,8 +157,8 @@ class WorkflowEngine:
                     # Debug
                     # print(f"DEBUG: Router output: '{val}', Target: '{target_id}', Match: {str(val).strip() == target_id}")
                         
-                    # Comparar com o ID do alvo
-                    return str(val).strip() == target_id
+                    # Comparar com o ID do alvo (case insensitive)
+                    return str(val).strip().lower() == target_id.lower()
                 return condition
 
             # Identificar passos de destino (excluindo o start_step)
