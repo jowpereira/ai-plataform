@@ -3,28 +3,28 @@
 Este documento rastrea o progresso detalhado do desenvolvimento do módulo worker genérico.
 
 ## Fase 1: Fundamentos e Estrutura (MVP)
-- [ ] **Setup Inicial**
-    - [ ] Criar estrutura de diretórios `src/worker`.
-    - [ ] Criar `CHANGELOG.md` para registro de marcos.
-- [ ] **Modelagem de Configuração (`src/worker/config.py`)**
-    - [ ] Definir modelo `ToolConfig` (id, path).
-    - [ ] Definir modelo `ModelConfig` (type, deployment, env vars).
-    - [ ] Definir modelo `AgentConfig` (role, instructions, tools, model).
-    - [ ] Definir modelo `WorkflowStep` (id, agent, input_template, next).
-    - [ ] Definir modelo `WorkerConfig` (root).
-    - [ ] Implementar `ConfigLoader` com suporte a resolução de variáveis de ambiente (`${VAR}`).
-- [ ] **Fábrica de Componentes (`src/worker/factory.py`)**
-    - [ ] Implementar `ToolFactory` para importação dinâmica (`importlib`).
-    - [ ] Implementar `AgentFactory` para instanciar `ChatAgent` do framework.
-    - [ ] Implementar suporte a `OpenAIChatClient` e `AzureOpenAIChatClient`.
-- [ ] **Motor de Execução (`src/worker/engine.py`)**
-    - [ ] Criar classe `WorkflowEngine`.
-    - [ ] Implementar construção de workflow sequencial básico.
-    - [ ] Implementar método `run`.
-- [ ] **Refatoração e Teste**
-    - [ ] Migrar `scripts/worker_test/config/worker.json` para o novo schema.
-    - [ ] Atualizar `scripts/worker_test/run_worker.py` para usar o novo módulo `src.worker`.
-    - [ ] Validar execução ponta a ponta (Hello World).
+- [x] **Setup Inicial**
+    - [x] Criar estrutura de diretórios `src/worker`.
+    - [x] Criar `CHANGELOG.md` para registro de marcos.
+- [x] **Modelagem de Configuração (`src/worker/config.py`)**
+    - [x] Definir modelo `ToolConfig` (id, path).
+    - [x] Definir modelo `ModelConfig` (type, deployment, env vars).
+    - [x] Definir modelo `AgentConfig` (role, instructions, tools, model).
+    - [x] Definir modelo `WorkflowStep` (id, agent, input_template, next).
+    - [x] Definir modelo `WorkerConfig` (root).
+    - [x] Implementar `ConfigLoader` com suporte a resolução de variáveis de ambiente (`${VAR}`).
+- [x] **Fábrica de Componentes (`src/worker/factory.py`)**
+    - [x] Implementar `ToolFactory` para importação dinâmica (`importlib`).
+    - [x] Implementar `AgentFactory` para instanciar `ChatAgent` do framework.
+    - [x] Implementar suporte a `OpenAIChatClient` e `AzureOpenAIChatClient`.
+- [x] **Motor de Execução (`src/worker/engine.py`)**
+    - [x] Criar classe `WorkflowEngine`.
+    - [x] Implementar construção de workflow sequencial básico.
+    - [x] Implementar método `run`.
+- [x] **Refatoração e Teste**
+    - [x] Migrar `scripts/worker_test/config/worker.json` para o novo schema.
+    - [x] Atualizar `scripts/worker_test/run_worker.py` para usar o novo módulo `src.worker`.
+    - [x] Validar execução ponta a ponta (Hello World).
 
 ## Fase 2: Workflows Avançados
 - [x] **Suporte a Paralelismo**
