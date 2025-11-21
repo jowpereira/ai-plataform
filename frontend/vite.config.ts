@@ -17,7 +17,7 @@ export default defineConfig({
       // Enable deterministic builds, as per https://github.com/vitejs/vite/issues/13672#issuecomment-1784110536
       strictRequires: true,
     },
-    outDir: "../src/devui/ui",
+    outDir: "../src/maia_ui/ui",
     emptyOutDir: true,
     rollupOptions: {
       output: {

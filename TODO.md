@@ -74,3 +74,4 @@ Este documento rastrea o progresso detalhado do desenvolvimento do módulo worke
   - [x] Integrar servidor FastAPI ao `run.py`.
   - [x] Rebranding completo para "MAIA".
   - [x] Carregamento automático de exemplos do diretório `exemplos/`.
+  - [x] Renomear módulo `src.devui` para `src.maia_ui`.

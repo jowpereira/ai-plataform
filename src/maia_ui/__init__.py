@@ -37,9 +37,9 @@ def register_cleanup(entity: Any, *hooks: Callable[[], Any]) -> None:
     Raises:
         ValueError: If no hooks provided
 
-    Examples:
+        Examples:
         Single cleanup hook:
-        >>> from agent_framework.devui import serve, register_cleanup
+        >>> from src.maia_ui import serve, register_cleanup
         >>> credential = DefaultAzureCredential()
         >>> agent = ChatAgent(...)
         >>> register_cleanup(agent, credential.close)
@@ -50,11 +50,11 @@ def register_cleanup(entity: Any, *hooks: Callable[[], Any]) -> None:
 
         Works with file-based discovery:
         >>> # In agents/my_agent/agent.py
-        >>> from agent_framework.devui import register_cleanup
+        >>> from src.maia_ui import register_cleanup
         >>> credential = DefaultAzureCredential()
         >>> agent = ChatAgent(...)
         >>> register_cleanup(agent, credential.close)
-        >>> # Run: devui ./agents
+        >>> # Run: python run.py --ui
     """
     if not hooks:
         raise ValueError("At least one cleanup hook required")

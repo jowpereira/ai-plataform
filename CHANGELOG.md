@@ -16,6 +16,9 @@ Todos os marcos notáveis deste projeto serão documentados neste arquivo.
 ### Alterado
 
 - Atualização do `run.py` para suportar a flag `--ui` e servir a aplicação web.
+- **Refatoração de Módulo:**
+  - Renomeado módulo `src.devui` para `src.maia_ui` para melhor alinhamento semântico.
+  - Atualizado `run.py` e configurações de build do frontend.
 
 ## [0.2.0] - 2025-11-20
 

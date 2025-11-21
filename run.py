@@ -89,12 +89,12 @@ def run(
     if dev_ui:
         # --- MODO UI ---
         try:
-            # Usando versão local do DevUI (src.devui)
-            from src.devui import serve
-            print("📦 Usando versão local do MAIA (src.devui)")
+            # Usando versão local do MAIA (src.maia_ui)
+            from src.maia_ui import serve
+            print("📦 Usando versão local do MAIA (src.maia_ui)")
         except ImportError as e:
-            print(f"❌ Erro ao importar 'src.devui': {e}")
-            print("Verifique se a pasta 'src/devui' existe e contém o arquivo '__init__.py'.")
+            print(f"❌ Erro ao importar 'src.maia_ui': {e}")
+            print("Verifique se a pasta 'src/maia_ui' existe e contém o arquivo '__init__.py'.")
             raise typer.Exit(code=1)
 
         os.environ["DEVUI_MODE"] = "true"
