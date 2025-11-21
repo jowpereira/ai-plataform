@@ -31,7 +31,7 @@ ENV/
 env/
 .env
 .env.*
-.github/
+#.github/
 docs/
 
 # Pytest
