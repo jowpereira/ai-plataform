@@ -35,7 +35,10 @@ def load_all_examples_for_ui():
         print(f"Diretório de exemplos não encontrado: {examples_dir}")
         return []
 
-    for file_path in examples_dir.glob("*.json"):
+    # Carregar todos os arquivos JSON da pasta exemplos
+    files_to_load = list(examples_dir.glob("*.json"))
+
+    for file_path in files_to_load:
         print(f"Carregando exemplo: {file_path.name}")
         try:
             loader = ConfigLoader(str(file_path))
@@ -46,7 +49,31 @@ def load_all_examples_for_ui():
             
             if engine._workflow:
                 entities.append(engine._workflow)
-                print(f"✅ Adicionado: {config.name} ({file_path.name})")
+                
+                # 1. Registrar instâncias do workflow (ex: step1, step2)
+                # Isso permite debug de nós específicos
+                workflow_agents = engine.get_agents()
+                # entities.extend(workflow_agents)
+                
+                # 2. Registrar templates de agentes (ex: weather_agent)
+                # Isso permite que o frontend recrie o workflow referenciando os templates
+                template_count = 0
+                if config.agents:
+                    for agent_conf in config.agents:
+                        try:
+                            # Verificar se já não foi adicionado (evitar duplicatas se ID coincidir)
+                            if not any(e.id == agent_conf.id for e in entities):
+                                template_agent = engine.agent_factory.create_agent(agent_conf.id)
+                                # Garantir ID original
+                                template_agent.id = agent_conf.id
+                                # Marcar como oculto para não poluir a UI (mas estar disponível para o engine)
+                                template_agent._maia_hidden = True
+                                entities.append(template_agent)
+                                template_count += 1
+                        except Exception as e:
+                            print(f"⚠️ Aviso: Falha ao criar template '{agent_conf.id}': {e}")
+
+                print(f"✅ Adicionado: {config.name} ({file_path.name}) + {len(workflow_agents)} nós (ocultos) + {template_count} templates (ocultos)")
             else:
                 print(f"⚠️ Falha ao construir workflow para {file_path.name}")
                 
@@ -100,18 +127,14 @@ def run(
         os.environ["DEVUI_MODE"] = "true"
         print("🚀 Iniciando MAIA com exemplos locais...")
         
-        entities = load_all_examples_for_ui()
-        
-        if not entities:
-            print("Nenhuma entidade carregada. Verifique os arquivos em 'exemplos/'.")
-            raise typer.Exit(code=1)
-        
-        print(f"Iniciando servidor com {len(entities)} entidades...")
-        for e in entities:
-            name = getattr(e, "name", "Unknown")
-            print(f" - Entity: {name} (Type: {type(e).__name__})")
+        examples_dir = PROJECT_ROOT / "exemplos"
+        if not examples_dir.exists():
+             print(f"Diretório de exemplos não encontrado: {examples_dir}")
+             raise typer.Exit(code=1)
+
+        print(f"Iniciando servidor monitorando: {examples_dir}")
             
-        serve(entities=entities)
+        serve(entities_dir=str(examples_dir))
         return
 
     # --- MODO CLI ---

@@ -4,6 +4,8 @@ import LoginPage from "@/pages/auth/LoginPage";
 import PlatformLayout from "@/layouts/PlatformLayout";
 import DashboardPage from "@/pages/platform/dashboard/DashboardPage";
 import StudioPage from "@/pages/platform/studio/StudioPage";
+import AgentListPage from "@/pages/platform/agents/AgentListPage";
+import WorkflowListPage from "@/pages/platform/workflow/WorkflowListPage";
 import ChatPage from "@/pages/platform/chat/ChatPage";
 import DebugPage from "@/pages/platform/debug/DebugPage";
 import UsersPage from "@/pages/platform/admin/UsersPage";
@@ -20,6 +22,8 @@ export default function App() {
         <Route path="/platform" element={<PlatformLayout />}>
           <Route index element={<Navigate to="/platform/dashboard" replace />} />
           <Route path="dashboard" element={<DashboardPage />} />
+          <Route path="agents" element={<AgentListPage />} />
+          <Route path="workflows" element={<WorkflowListPage />} />
           <Route path="studio" element={<StudioPage />} />
           <Route path="chat" element={<ChatPage />} />
           <Route path="debug" element={<DebugPage />} />

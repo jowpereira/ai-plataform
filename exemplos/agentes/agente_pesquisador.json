@@ -1,0 +1,10 @@
+{
+  "id": "agente_pesquisador",
+  "role": "Agente Pesquisador",
+  "description": "Agente especializado em pesquisa climática.",
+  "model": "gpt-4o-mini",
+  "instructions": "Você é um pesquisador climático.",
+  "tools": [
+    "consultar_clima"
+  ]
+}

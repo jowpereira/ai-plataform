@@ -4,6 +4,7 @@ import {
   Workflow,
   Home,
   Loader2,
+  User,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { truncateText } from "@/utils/workflow-utils";
@@ -72,6 +73,7 @@ export const ExecutorNode = memo(({ data, selected }: NodeProps) => {
 
   const hasData = nodeData.inputData || nodeData.outputData || nodeData.error;
   const isRunning = nodeData.state === "running";
+  const isHuman = nodeData.executorType === "human";
 
   // Determine handle positions based on layout direction
   const isVertical = nodeData.layoutDirection === "TB";
@@ -189,16 +191,17 @@ export const ExecutorNode = memo(({ data, selected }: NodeProps) => {
       <div className="p-3">
         {/* Header with icon and title */}
         <div className="flex items-start gap-3">
-          <div className="flex-shrink-0 relative">
             {/* Icon container with dark background */}
             <div className="w-10 h-10 rounded-lg bg-gray-900/90 dark:bg-gray-800/90 flex items-center justify-center">
               {nodeData.isStartNode ? (
                 <Home className="w-5 h-5 text-[#643FB2] dark:text-[#8B5CF6]" />
+              ) : isHuman ? (
+                <User className="w-5 h-5 text-blue-500 dark:text-blue-400" />
               ) : (
                 <Workflow className="w-5 h-5 text-gray-300 dark:text-gray-400" />
               )}
             </div>
-          </div>
+            
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-1.5">
               <h3 className="font-medium text-sm text-gray-900 dark:text-gray-100 truncate">

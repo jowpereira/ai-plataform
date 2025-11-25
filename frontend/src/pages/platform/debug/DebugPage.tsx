@@ -1,5 +1,5 @@
 /**
- * MAIA App - Minimal orchestrator for agent/workflow interactions
+ * DebugPage - Adapted from DevUI App
  * Features: Entity selection, layout management, debug coordination
  */
 
@@ -330,6 +330,17 @@ export default function DebugPage() {
     const currentBackendUrl = apiClient.getBaseUrl();
     const isAuthError = entityError === "UNAUTHORIZED" || authRequired;
 
+    // Extract port from the backend URL for the command suggestion
+    let backendPort = "8080"; // default fallback
+    try {
+      if (currentBackendUrl) {
+        const url = new URL(currentBackendUrl);
+        backendPort = url.port || (url.protocol === "https:" ? "443" : "80");
+      }
+    } catch {
+      // If URL parsing fails, keep default
+    }
+
     return (
       <div className="h-screen flex flex-col bg-background">
         <AppHeader
@@ -429,7 +440,7 @@ export default function DebugPage() {
                       Start the backend:
                     </p>
                     <code className="block bg-background px-3 py-2 rounded border text-sm font-mono text-foreground">
-                      devui ./agents --port 8080
+                      devui ./agents --port {backendPort}
                     </code>
                     <p className="text-xs text-muted-foreground">
                       Or launch programmatically with{" "}

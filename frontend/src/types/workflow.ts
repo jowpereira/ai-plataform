@@ -2,6 +2,56 @@
 // for better type safety and consistency with the backend
 
 /**
+ * Tool information from discovery endpoint
+ */
+export interface ToolInfo {
+  id: string;
+  name: string;
+  description?: string;
+  module?: string;
+  parameters?: Record<string, unknown>;
+}
+
+/**
+ * Node configuration for workflow nodes
+ */
+export interface NodeConfig {
+  id: string;
+  type: "agent" | "tool" | "condition" | "router" | "human" | "start" | "end";
+  label?: string;
+  agent?: string;
+  input_template?: string;
+  config?: Record<string, unknown>;
+}
+
+/**
+ * Edge configuration for workflow edges
+ */
+export interface EdgeConfig {
+  source: string;
+  target: string;
+  condition?: string;
+  label?: string;
+}
+
+/**
+ * Workflow configuration (high-level builder format)
+ */
+export interface WorkflowConfig {
+  type: "sequential" | "parallel" | "router" | "group_chat" | "handoff";
+  nodes?: NodeConfig[];
+  edges?: EdgeConfig[];
+  steps?: string[];
+  start_step?: string;
+  router_agent?: string;
+  manager_agent?: string;
+  triage_agent?: string;
+  participants?: string[];
+  max_rounds?: number;
+  termination_condition?: string;
+}
+
+/**
  * Base executor interface that mirrors agent_framework_workflow._executor.Executor
  */
 export interface Executor {

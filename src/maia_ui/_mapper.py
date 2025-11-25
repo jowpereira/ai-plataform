@@ -41,6 +41,7 @@ from .models import (
     ResponseOutputMessage,
     ResponseOutputText,
     ResponseReasoningTextDeltaEvent,
+    ResponseRequestInfoEvent,
     ResponseStreamEvent,
     ResponseTextDeltaEvent,
     ResponseTraceEventComplete,

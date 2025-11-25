@@ -55,6 +55,24 @@ interface DiscoveryResponse {
   entities: BackendEntityInfo[];
 }
 
+// Saved workflow from exemplos/workflows/ folder
+export interface SavedWorkflow {
+  name: string;
+  version?: string;
+  workflow: {
+    type: string;
+    steps: unknown[];
+  };
+  agents: Array<{
+    id: string;
+    role: string;
+    model: string;
+    instructions: string;
+  }>;
+  resources?: Record<string, unknown>;
+  _file: string; // filename
+}
+
 // Conversation API types (OpenAI standard)
 interface ConversationApiResponse {
   id: string;
@@ -284,6 +302,19 @@ class ApiClient {
     return workflows;
   }
 
+  // Get saved workflows from exemplos/workflows/ folder
+  async getSavedWorkflows(): Promise<SavedWorkflow[]> {
+    const response = await this.request<{ object: string; data: SavedWorkflow[]; count: number }>("/v1/workflows");
+    return response.data || [];
+  }
+
+  // Delete a saved workflow file
+  async deleteSavedWorkflow(filename: string): Promise<void> {
+    await this.request(`/v1/workflows/${encodeURIComponent(filename)}`, {
+      method: "DELETE",
+    });
+  }
+
   async getAgentInfo(agentId: string): Promise<AgentInfo> {
     // Get detailed entity info from unified endpoint
     return this.request<AgentInfo>(`/v1/entities/${agentId}/info?type=agent`);
@@ -296,6 +327,13 @@ class ApiClient {
     return this.request<import("@/types").WorkflowInfo>(
       `/v1/entities/${workflowId}/info?type=workflow`
     );
+  }
+
+  // Delete entity
+  async deleteEntity(entityId: string): Promise<void> {
+    await this.request(`/v1/entities/${entityId}`, {
+      method: "DELETE",
+    });
   }
 
   async reloadEntity(entityId: string): Promise<{ success: boolean; message: string }> {
@@ -603,25 +641,28 @@ class ApiClient {
 
             buffer += decoder.decode(value, { stream: true });
 
-            // Parse SSE events
-            const lines = buffer.split("\n");
-            buffer = lines.pop() || ""; // Keep incomplete line in buffer
+            // Parse SSE events - split by double newline to handle full events
+            const parts = buffer.split("\n\n");
+            buffer = parts.pop() || ""; // Keep incomplete part in buffer
 
-            for (const line of lines) {
-              if (line.startsWith("data: ")) {
-                const dataStr = line.slice(6);
+            for (const part of parts) {
+              const lines = part.split("\n");
+              
+              for (const line of lines) {
+                if (line.startsWith("data: ")) {
+                  const dataStr = line.slice(6);
 
-                // Handle [DONE] signal
-                if (dataStr === "[DONE]") {
-                  if (conversationId) {
-                    markStreamingCompleted(conversationId);
+                  // Handle [DONE] signal
+                  if (dataStr === "[DONE]") {
+                    if (conversationId) {
+                      markStreamingCompleted(conversationId);
+                    }
+                    return;
                   }
-                  return;
-                }
 
-                try {
-                  const openAIEvent: ExtendedResponseStreamEvent =
-                    JSON.parse(dataStr);
+                  try {
+                    const openAIEvent: ExtendedResponseStreamEvent =
+                      JSON.parse(dataStr);
 
                   // Capture response_id if present in the event for use in retries
                   if ("response" in openAIEvent && openAIEvent.response && typeof openAIEvent.response === "object" && "id" in openAIEvent.response) {
@@ -695,7 +736,8 @@ class ApiClient {
               }
             }
           }
-        } finally {
+        }
+      } finally {
           reader.releaseLock();
         }
       } catch (error) {
@@ -762,9 +804,11 @@ class ApiClient {
       input: JSON.stringify(request.input_data || {}), // Serialize workflow input as JSON string
       stream: true,
       conversation: request.conversation_id, // Include conversation if present
-      extra_body: request.checkpoint_id
-        ? { entity_id: workflowId, checkpoint_id: request.checkpoint_id }
-        : undefined, // Pass checkpoint_id if provided
+      extra_body: {
+        ...(request.checkpoint_id ? { checkpoint_id: request.checkpoint_id } : {}),
+        ...(request.workflow_config ? { workflow_config: request.workflow_config } : {}),
+        entity_id: workflowId
+      }
     };
 
     yield* this.streamOpenAIResponse(openAIRequest, request.conversation_id);
@@ -938,6 +982,11 @@ class ApiClient {
 
   // Checkpoint operations now handled through standard conversation items API
   // Checkpoints are conversation items with type="checkpoint"
+
+  async listTools(): Promise<import("@/types/workflow").ToolInfo[]> {
+    const response = await this.request<{ data: import("@/types/workflow").ToolInfo[] }>("/v1/tools");
+    return response.data;
+  }
 }
 
 // Export singleton instance

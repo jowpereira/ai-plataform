@@ -30,17 +30,26 @@ interface DialogDescriptionProps {
 
 interface DialogFooterProps {
   children: React.ReactNode;
+  className?: string;
 }
 
 export function Dialog({ open, onOpenChange, children }: DialogProps) {
   if (!open) return null;
 
+  // Handler para fechar com ESC
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Escape") {
+      onOpenChange(false);
+    }
+  };
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center"
-      onClick={() => onOpenChange(false)}
+      onKeyDown={handleKeyDown}
+      tabIndex={-1}
     >
-      {/* Backdrop */}
+      {/* Backdrop - NÃO fecha ao clicar (mais seguro para formulários) */}
       <div className="absolute inset-0 bg-black/50" />
 
       {/* Modal content */}
@@ -95,9 +104,9 @@ export function DialogClose({ onClose }: { onClose: () => void }) {
   );
 }
 
-export function DialogFooter({ children }: DialogFooterProps) {
+export function DialogFooter({ children, className = "" }: DialogFooterProps) {
   return (
-    <div className="flex justify-end gap-2 p-4 border-t bg-muted/50">
+    <div className={`flex justify-end gap-2 p-4 border-t bg-muted/50 ${className}`}>
       {children}
     </div>
   );

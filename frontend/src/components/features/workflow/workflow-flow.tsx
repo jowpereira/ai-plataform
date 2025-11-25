@@ -1,4 +1,4 @@
-import { useMemo, useCallback, useEffect, memo } from "react";
+import { useMemo, useCallback, useEffect, memo, useState } from "react";
 import {
   MoreVertical,
   Map,
@@ -30,6 +30,7 @@ import {
   BackgroundVariant,
   type NodeTypes,
   type Node,
+  type Edge,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { ExecutorNode, type ExecutorNodeData } from "./executor-node";
@@ -45,6 +46,7 @@ import {
 } from "@/utils/workflow-utils";
 import type { ExtendedResponseStreamEvent } from "@/types";
 import type { Workflow } from "@/types/workflow";
+import { NodePropertiesPanel } from "./node-properties-panel";
 
 const nodeTypes: NodeTypes = {
   executor: ExecutorNode,
@@ -212,6 +214,7 @@ interface WorkflowFlowProps {
   layoutDirection?: "LR" | "TB";
   onLayoutDirectionChange?: (direction: "LR" | "TB") => void;
   timelineVisible?: boolean;
+  onWorkflowChange?: (nodes: Node[], edges: Edge[]) => void;
 }
 
 // Animation handler component that runs inside ReactFlow context
@@ -280,18 +283,31 @@ const TimelineResizeHandler = memo(({ timelineVisible }: { timelineVisible: bool
   return null; // This component doesn't render anything
 });
 
-export const WorkflowFlow = memo(function WorkflowFlow({
+export function WorkflowFlow({
   workflowDump,
-  events,
-  isStreaming,
+  events = [],
+  isStreaming = false,
   onNodeSelect,
-  className = "",
-  viewOptions = { showMinimap: false, showGrid: true, animateRun: true, consolidateBidirectionalEdges: true },
+  className,
+  viewOptions = { showMinimap: true, showGrid: true, animateRun: true, consolidateBidirectionalEdges: true },
   onToggleViewOption,
   layoutDirection = "LR",
   onLayoutDirectionChange,
   timelineVisible = false,
+  onWorkflowChange,
 }: WorkflowFlowProps) {
+  const [nodes, setNodes, onNodesChange] = useNodesState<Node<ExecutorNodeData>>([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
+  const [rfInstance, setRfInstance] = useState<any>(null);
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+
+  // Notify parent of changes
+  useEffect(() => {
+    if (onWorkflowChange) {
+      onWorkflowChange(nodes, edges);
+    }
+  }, [nodes, edges, onWorkflowChange]);
+
   // Create initial nodes and edges from workflow dump
   const { initialNodes, initialEdges } = useMemo(() => {
     if (!workflowDump) {
@@ -321,10 +337,6 @@ export const WorkflowFlow = memo(function WorkflowFlow({
       initialEdges: finalEdges,
     };
   }, [workflowDump, onNodeSelect, layoutDirection, viewOptions.consolidateBidirectionalEdges]);
-
-  const [nodes, setNodes, onNodesChange] =
-    useNodesState<Node<ExecutorNodeData>>(initialNodes);
-  const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
 
   // Process events and update node/edge states
   const nodeUpdates = useMemo(() => {
@@ -395,124 +407,122 @@ export const WorkflowFlow = memo(function WorkflowFlow({
   }, [workflowDump, viewOptions.consolidateBidirectionalEdges]); // Re-initialize when workflow or consolidation toggle changes
 
   const onNodeClick = useCallback(
-    (event: React.MouseEvent, node: Node<ExecutorNodeData>) => {
-      event.stopPropagation();
-      onNodeSelect?.(node.data.executorId, node.data);
+    (_: React.MouseEvent, node: Node) => {
+      setSelectedNodeId(node.id);
+      if (onNodeSelect) {
+        onNodeSelect(node.data.executorId as string, node.data as ExecutorNodeData);
+      }
     },
     [onNodeSelect]
   );
 
-  if (!workflowDump) {
-    return (
-      <div
-        className={`flex items-center justify-center h-full bg-gray-50 dark:bg-gray-900 rounded border border-gray-200 dark:border-gray-700 ${className}`}
-      >
-        <div className="text-center text-gray-500 dark:text-gray-400">
-          <div className="text-lg font-medium mb-2">No Workflow Data</div>
-          <div className="text-sm">Workflow dump is not available.</div>
-        </div>
-      </div>
-    );
-  }
+  const onPaneClick = useCallback(() => {
+    setSelectedNodeId(null);
+    if (onNodeSelect) {
+      // @ts-ignore
+      onNodeSelect(null, null);
+    }
+  }, [onNodeSelect]);
 
-  if (initialNodes.length === 0) {
-    return (
-      <div
-        className={`flex items-center justify-center h-full bg-gray-50 dark:bg-gray-900 rounded border border-gray-200 dark:border-gray-700 ${className}`}
-      >
-        <div className="text-center text-gray-500 dark:text-gray-400">
-          <div className="text-lg font-medium mb-2">No Executors Found</div>
-          <div className="text-sm">
-            Could not extract executors from workflow dump.
-          </div>
-          <details className="mt-2 text-xs">
-            <summary className="cursor-pointer">Debug Info</summary>
-            <pre className="mt-1 p-2 bg-gray-100 dark:bg-gray-800 rounded text-left overflow-auto">
-              {JSON.stringify(workflowDump, null, 2)}
-            </pre>
-          </details>
-        </div>
-      </div>
+  const handleNodeUpdate = (nodeId: string, newData: any) => {
+    setNodes((nds) =>
+      nds.map((node) => {
+        if (node.id === nodeId) {
+          return { ...node, data: { ...node.data, ...newData } };
+        }
+        return node;
+      })
     );
-  }
+  };
+
+  const onDragOver = useCallback((event: React.DragEvent) => {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'move';
+  }, []);
+
+  const onDrop = useCallback(
+    (event: React.DragEvent) => {
+      event.preventDefault();
+
+      const type = event.dataTransfer.getData('application/reactflow');
+      const toolId = event.dataTransfer.getData('application/toolId');
+      const dataString = event.dataTransfer.getData('application/reactflow-data');
+      
+      // check if the dropped element is valid
+      if (typeof type === 'undefined' || !type) {
+        return;
+      }
+
+      let label = `${type} node`;
+      let additionalData = {};
+      if (dataString) {
+        try {
+          const data = JSON.parse(dataString);
+          if (data.label) {
+            label = data.label;
+          }
+          additionalData = data;
+        } catch (e) {
+          console.error("Failed to parse drop data", e);
+        }
+      }
+
+      const position = rfInstance.screenToFlowPosition({
+        x: event.clientX,
+        y: event.clientY,
+      });
+      
+      const nodeId = `node_${Date.now()}`;
+      const newNode: Node<ExecutorNodeData> = {
+        id: nodeId,
+        type: 'executor',
+        position,
+        data: { 
+          executorId: nodeId,
+          name: label,
+          executorType: type,
+          tool_id: toolId,
+          state: 'pending',
+          ...additionalData
+        },
+      };
+
+      setNodes((nds) => nds.concat(newNode));
+    },
+    [rfInstance, setNodes],
+  );
+
+  const selectedNode = useMemo(() => {
+    return nodes.find((n) => n.id === selectedNodeId) || null;
+  }, [nodes, selectedNodeId]);
 
   return (
-    <div className={`h-full w-full ${className}`}>
+    <div className={`relative w-full h-full ${className}`}>
       <ReactFlow
         nodes={nodes}
         edges={edges}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onNodeClick={onNodeClick}
+        onPaneClick={onPaneClick}
+        onInit={setRfInstance}
+        onDrop={onDrop}
+        onDragOver={onDragOver}
         nodeTypes={nodeTypes}
         fitView
-        fitViewOptions={{ padding: 0.2 }}
+        attributionPosition="bottom-right"
         minZoom={0.1}
-        maxZoom={1.5}
-        defaultEdgeOptions={{
-          type: "default",
-          animated: false,
-          style: { stroke: "#6b7280", strokeWidth: 2 },
-        }}
-        nodesDraggable={!isStreaming} // Disable dragging during execution
-        nodesConnectable={false} // Disable connecting nodes
-        elementsSelectable={true}
-        proOptions={{ hideAttribution: true }}
+        maxZoom={2}
       >
-        {viewOptions.showGrid && (
-          <Background
-            variant={BackgroundVariant.Dots}
-            gap={20}
-            size={1}
-            color="#e5e7eb"
-            className="dark:opacity-30"
-          />
-        )}
-        <Controls
-          position="bottom-left"
-          showInteractive={false}
-          style={{
-            backgroundColor: "rgba(255, 255, 255, 0.9)",
-            border: "1px solid #e5e7eb",
-            borderRadius: "3px",
-          }}
-          className="dark:!bg-gray-800/90 dark:!border-gray-600"
+        <Background
+          variant={BackgroundVariant.Dots}
+          gap={12}
+          size={1}
+          className={viewOptions.showGrid ? "" : "hidden"}
         />
-        {viewOptions.showMinimap && (
-          <MiniMap
-            nodeColor={(node: Node) => {
-              const data = node.data as ExecutorNodeData;
-              const state = data?.state;
-              switch (state) {
-                case "running":
-                  return "#643FB2";
-                case "completed":
-                  return "#10b981";
-                case "failed":
-                  return "#ef4444";
-                case "cancelled":
-                  return "#f97316";
-                default:
-                  return "#6b7280";
-              }
-            }}
-            maskColor="rgba(0, 0, 0, 0.1)"
-            position="bottom-right"
-            style={{
-              backgroundColor: "rgba(255, 255, 255, 0.9)",
-              border: "1px solid #e5e7eb",
-              borderRadius: "8px",
-            }}
-            className="dark:!bg-gray-800/90 dark:!border-gray-600"
-          />
-        )}
-        <WorkflowAnimationHandler
-          nodes={nodes}
-          nodeUpdates={nodeUpdates}
-          isStreaming={isStreaming}
-          animateRun={viewOptions.animateRun}
-        />
-        <TimelineResizeHandler timelineVisible={timelineVisible} />
+        <Controls />
+        {viewOptions.showMinimap && <MiniMap />}
+        
         <ViewOptionsPanel
           workflowDump={workflowDump}
           onNodeSelect={onNodeSelect}
@@ -521,43 +531,27 @@ export const WorkflowFlow = memo(function WorkflowFlow({
           layoutDirection={layoutDirection}
           onLayoutDirectionChange={onLayoutDirectionChange}
         />
+
+        <WorkflowAnimationHandler
+          nodes={nodes}
+          nodeUpdates={nodeUpdates}
+          isStreaming={isStreaming}
+          animateRun={viewOptions.animateRun}
+        />
+        
+        <TimelineResizeHandler timelineVisible={timelineVisible} />
       </ReactFlow>
 
-      {/* CSS for custom edge animations and dark theme controls */}
-      <style>{`
-        .react-flow__edge-path {
-          transition: stroke 0.3s ease, stroke-width 0.3s ease;
-        }
-        .react-flow__edge.animated .react-flow__edge-path {
-          stroke-dasharray: 5 5;
-          animation: dash 1s linear infinite;
-        }
-        @keyframes dash {
-          0% { stroke-dashoffset: 0; }
-          100% { stroke-dashoffset: -10; }
-        }
-        
-        /* Dark theme styles for React Flow controls */
-        .dark .react-flow__controls {
-          background-color: rgba(31, 41, 55, 0.9) !important;
-          border-color: rgb(75, 85, 99) !important;
-        }
-        .dark .react-flow__controls-button {
-          background-color: rgba(31, 41, 55, 0.9) !important;
-          border-color: rgb(75, 85, 99) !important;
-          color: rgb(229, 231, 235) !important;
-        }
-        .dark .react-flow__controls-button:hover {
-          background-color: rgba(55, 65, 81, 0.9) !important;
-          color: rgb(255, 255, 255) !important;
-        }
-        .dark .react-flow__controls-button svg {
-          fill: rgb(229, 231, 235) !important;
-        }
-        .dark .react-flow__controls-button:hover svg {
-          fill: rgb(255, 255, 255) !important;
-        }
-      `}</style>
+      {/* Node Properties Panel Overlay */}
+      {selectedNode && (
+        <div className="absolute top-0 right-0 bottom-0 z-10">
+          <NodePropertiesPanel 
+            node={selectedNode} 
+            onUpdate={handleNodeUpdate}
+            onClose={() => setSelectedNodeId(null)}
+          />
+        </div>
+      )}
     </div>
   );
-});
+}

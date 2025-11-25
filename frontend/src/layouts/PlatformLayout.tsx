@@ -1,5 +1,6 @@
 import { Link, Outlet, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
+import { Toaster } from "@/components/ui/toaster";
 import { 
   LayoutDashboard, 
   Bot, 
@@ -7,7 +8,9 @@ import {
   Bug, 
   Settings,
   LogOut,
-  Users
+  Users,
+  Workflow,
+  Boxes
 } from "lucide-react";
 
 export default function PlatformLayout() {
@@ -36,13 +39,22 @@ export default function PlatformLayout() {
               Dashboard
             </Button>
           </Link>
-          <Link to="/platform/studio">
+          <Link to="/platform/agents">
             <Button 
-              variant={isActive("/platform/studio") ? "secondary" : "ghost"} 
+              variant={isActive("/platform/agents") ? "secondary" : "ghost"} 
               className="w-full justify-start gap-2"
             >
-              <Bot className="h-4 w-4" />
-              Agent Studio
+              <Boxes className="h-4 w-4" />
+              Agentes
+            </Button>
+          </Link>
+          <Link to="/platform/workflows">
+            <Button 
+              variant={isActive("/platform/workflows") || isActive("/platform/studio") ? "secondary" : "ghost"} 
+              className="w-full justify-start gap-2"
+            >
+              <Workflow className="h-4 w-4" />
+              Workflows
             </Button>
           </Link>
           <Link to="/platform/chat">
@@ -100,6 +112,7 @@ export default function PlatformLayout() {
       <main className="flex-1 overflow-auto">
         <Outlet />
       </main>
+      <Toaster />
     </div>
   );
 }

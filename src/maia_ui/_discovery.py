@@ -93,22 +93,48 @@ class EntityDiscovery:
 
         # Get entity metadata
         entity_info = self._entities.get(entity_id)
+        
+        # Fallback: Try to find by Name if ID not found
+        # This handles cases where Frontend sends the Agent Name/Role instead of ID
         if not entity_info:
-            raise ValueError(f"Entity {entity_id} not found in registry")
+            logger.warning(f"Entity ID '{entity_id}' not found directly. Searching by name...")
+            target_name = str(entity_id).strip().lower()
+            for info in self._entities.values():
+                if info.name and str(info.name).strip().lower() == target_name:
+                    logger.info(f"Found entity by name: '{entity_id}' -> ID: '{info.id}'")
+                    entity_info = info
+                    # We continue using the original entity_id (Name) as the key for loading
+                    # This ensures consistency with the caller's expectation
+                    break
+        
+        if not entity_info:
+            available = [f"{e.id} ({e.name})" for e in self._entities.values()]
+            raise ValueError(f"Entity {entity_id} not found in registry. Available entities: {len(available)}")
 
         # In-memory entities should never reach here (they're pre-loaded)
         if entity_info.source == "in_memory":
-            raise ValueError(f"In-memory entity {entity_id} missing from loaded objects cache")
+            # Se encontramos por nome, o ID real pode ser diferente do entity_id solicitado
+            # Tentar buscar no cache pelo ID real
+            if entity_info.id in self._loaded_objects:
+                logger.debug(f"Entity {entity_info.id} found in cache (resolved from {entity_id})")
+                return self._loaded_objects[entity_info.id]
+            
+                        # Se não achou nem pelo ID real, aí sim é erro
+            raise ValueError(f"In-memory entity {entity_id} (ID: {entity_info.id}) missing from loaded objects cache")
 
         logger.info(f"Lazy loading entity: {entity_id} (source: {entity_info.source})")
+        
+        # Load from directory
 
         # Load based on source - only directory and in-memory are supported
         if entity_info.source == "directory":
             entity_obj = await self._load_directory_entity(entity_id, entity_info)
+        elif entity_info.source == "json_config":
+            entity_obj = await self._load_json_entity(entity_id, entity_info)
         else:
             raise ValueError(
                 f"Unsupported entity source: {entity_info.source}. "
-                f"Only 'directory' and 'in-memory' sources are supported."
+                f"Only 'directory', 'json_config' and 'in-memory' sources are supported."
             )
 
         # Note: Checkpoint storage is now injected at runtime via run_stream() parameter,
@@ -303,6 +329,11 @@ class EntityDiscovery:
             # Check if it's a workflow
             if hasattr(entity_object, "get_executors_list") or hasattr(entity_object, "executors"):
                 entity_type = "workflow"
+            # Fallback: Check class name
+            elif "Workflow" in entity_object.__class__.__name__:
+                entity_type = "workflow"
+        
+        logger.info(f"Creating EntityInfo for {getattr(entity_object, 'name', 'Unknown')} (Detected type: {entity_type})")
 
         # Extract metadata with improved fallback naming
         name = getattr(entity_object, "name", None)
@@ -312,7 +343,10 @@ class EntityDiscovery:
             name = f"{entity_type.title()} {class_name}"
         description = getattr(entity_object, "description", "")
 
-        # Generate entity ID using Agent Framework specific naming
+        # Use existing ID if available (critical for config-based agents), otherwise generate one
+        # if hasattr(entity_object, "id") and entity_object.id:
+        #     entity_id = entity_object.id
+        # else:
         entity_id = self._generate_entity_id(entity_object, entity_type, source)
 
         # Extract tools/executors using Agent Framework specific logic
@@ -359,6 +393,9 @@ class EntityDiscovery:
             deployment_supported = True
             deployment_reason = "Ready for deployment (pending path verification)"
 
+        # Check for hidden flag (internal/template entities)
+        is_hidden = getattr(entity_object, "_maia_hidden", False)
+
         # Create EntityInfo with Agent Framework specifics
         return EntityInfo(
             id=entity_id,
@@ -377,12 +414,14 @@ class EntityDiscovery:
             start_executor_id=tools_list[0] if tools_list and entity_type == "workflow" else None,
             deployment_supported=deployment_supported,
             deployment_reason=deployment_reason,
+            source=source,
             metadata={
                 "source": "agent_framework_object",
                 "class_name": entity_object.__class__.__name__
                 if hasattr(entity_object, "__class__")
                 else str(type(entity_object)),
                 "has_run_stream": hasattr(entity_object, "run_stream"),
+                "hidden": is_hidden,
             },
         )
 
@@ -408,6 +447,7 @@ class EntityDiscovery:
 
         # Scan for directories and Python files WITHOUT importing
         for item in entities_dir.iterdir():  # noqa: ASYNC240
+            print(f"DEBUG: Scanning item {item.name}")
             if item.name.startswith(".") or item.name == "__pycache__":
                 continue
 
@@ -417,6 +457,10 @@ class EntityDiscovery:
             elif item.is_file() and item.suffix == ".py" and not item.name.startswith("_"):
                 # Single file entity - create sparse metadata
                 self._register_sparse_file_entity(item)
+            elif item.is_file() and item.suffix == ".json" and not item.name.startswith("_"):
+                # JSON configuration entity
+                print(f"DEBUG: Found JSON entity file {item.name}")
+                self._register_sparse_json_entity(item)
 
     def _looks_like_entity(self, dir_path: Path) -> bool:
         """Check if directory contains an entity (without importing).
@@ -887,6 +931,105 @@ class EntityDiscovery:
 
         return tools
 
+    def _register_sparse_json_entity(self, file_path: Path) -> None:
+        """Register entities defined in a JSON configuration file."""
+        try:
+            # We need to parse the JSON to know what's inside
+            import json
+            with open(file_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            
+            # Check if it looks like a WorkerConfig
+            if "agents" in data or "workflow" in data:
+                # Register the workflow if present
+                if "workflow" in data:
+                    workflow_name = data.get("name", file_path.stem)
+                    # Use filename as ID to avoid conflicts if name is generic
+                    entity_id = workflow_name
+                    
+                    info = EntityInfo(
+                        id=entity_id,
+                        name=workflow_name,
+                        type="workflow",
+                        source="json_config",
+                        framework="agent_framework",
+                        metadata={"path": str(file_path), "config_type": "workflow"},
+                    )
+                    self._entities[entity_id] = info
+                    logger.info(f"Discovered JSON workflow: {entity_id}")
+
+                # Register agents
+                if "agents" in data:
+                    for agent in data["agents"]:
+                        agent_id = agent.get("id")
+                        if agent_id:
+                            info = EntityInfo(
+                                id=agent_id,
+                                name=agent.get("role", agent_id),
+                                type="agent",
+                                source="json_config",
+                                framework="agent_framework",
+                                metadata={"path": str(file_path), "config_type": "agent", "agent_id": agent_id},
+                            )
+                            self._entities[agent_id] = info
+                            logger.info(f"Discovered JSON agent: {agent_id}")
+                            
+        except Exception as e:
+            logger.warning(f"Failed to parse JSON entity file {file_path}: {e}")
+
+    async def _load_json_entity(self, entity_id: str, entity_info: EntityInfo) -> Any:
+        """Load entity from JSON configuration."""
+        from src.worker.config import ConfigLoader
+        from src.worker.engine import WorkflowEngine
+        
+        file_path = entity_info.metadata["path"]
+        loader = ConfigLoader(file_path)
+        config = loader.load()
+        
+        # Initialize engine to load agents and build workflow
+        engine = WorkflowEngine(config)
+        
+        config_type = entity_info.metadata.get("config_type")
+        
+        if config_type == "workflow":
+            # Build the workflow
+            engine.build()
+            if engine._workflow:
+                # Ensure the workflow has the correct ID/Name
+                engine._workflow.id = entity_id
+                engine._workflow.name = entity_info.name
+                
+                # ATTACH SOURCE CONFIG: This is critical for the frontend to receive the original
+                # high-level configuration (with steps) instead of the compiled DAG (with internal nodes).
+                # The frontend uses this to display the workflow structure and for execution requests.
+                # We attach it as a private attribute so _server.py can find it.
+                # We convert Pydantic model to dict for serialization.
+                if hasattr(config, "workflow"):
+                    # Use model_dump() for Pydantic v2 or dict() for v1
+                    wf_dict = config.workflow.model_dump() if hasattr(config.workflow, "model_dump") else config.workflow.dict()
+                    
+                    # Also include resources and agents if needed by frontend
+                    full_config = {
+                        "workflow": wf_dict,
+                        "resources": config.resources.model_dump() if hasattr(config.resources, "model_dump") else config.resources.dict(),
+                        "agents": [a.model_dump() if hasattr(a, "model_dump") else a.dict() for a in config.agents]
+                    }
+                    
+                    setattr(engine._workflow, "_source_config", full_config)
+                    logger.info(f"Attached source config to workflow {entity_id}")
+
+                return engine._workflow
+            else:
+                raise ValueError(f"Failed to build workflow from {file_path}")
+                
+        elif config_type == "agent":
+            target_agent_id = entity_info.metadata.get("agent_id")
+            # We can use the factory to create the agent
+            agent = engine.agent_factory.create_agent(target_agent_id)
+            return agent
+            
+        raise ValueError(f"Unknown config type: {config_type}")
+
     def _generate_entity_id(self, entity: Any, entity_type: str, source: str = "directory") -> str:
         """Generate unique entity ID with UUID suffix for collision resistance.
 
@@ -916,3 +1059,46 @@ class EntityDiscovery:
         full_uuid = uuid.uuid4().hex
 
         return f"{entity_type}_{source}_{base_name}_{full_uuid}"
+
+    def delete_entity(self, entity_id: str) -> None:
+        """Delete an entity and its underlying file/directory.
+
+        Args:
+            entity_id: Entity identifier
+
+        Raises:
+            ValueError: If entity not found or cannot be deleted
+        """
+        entity_info = self._entities.get(entity_id)
+        if not entity_info:
+            raise ValueError(f"Entity {entity_id} not found")
+
+        # Only support deleting file-based entities
+        if entity_info.source not in ["directory", "json_config"]:
+            raise ValueError(f"Cannot delete entity with source: {entity_info.source}")
+
+        path_str = entity_info.metadata.get("path")
+        if not path_str:
+            raise ValueError(f"Entity {entity_id} has no path metadata")
+
+        path = Path(path_str)
+        if not path.exists():
+            # If file doesn't exist, just clean up memory
+            logger.warning(f"Entity file/directory not found: {path}")
+        else:
+            try:
+                if path.is_file():
+                    path.unlink()
+                elif path.is_dir():
+                    import shutil
+
+                    shutil.rmtree(path)
+            except Exception as e:
+                raise ValueError(f"Failed to delete entity file/directory: {e}") from e
+
+        # Clean up memory
+        self.invalidate_entity(entity_id)
+        if entity_id in self._entities:
+            del self._entities[entity_id]
+
+        logger.info(f"Deleted entity: {entity_id}")

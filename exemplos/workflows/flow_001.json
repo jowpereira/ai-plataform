@@ -1,0 +1,61 @@
+{
+  "version": "1.0",
+  "name": "Flow_001",
+  "resources": {
+    "models": {
+      "gpt-4o-mini": {
+        "type": "azure-openai",
+        "deployment": "gpt-4o-mini"
+      }
+    },
+    "tools": [
+      {
+        "id": "consultar_clima",
+        "path": "mock_tools.basic:consultar_clima",
+        "description": "Retorna previão do tempo simulada"
+      }
+    ]
+  },
+  "agents": [
+    {
+      "id": "agente_escritor",
+      "role": "Agente Escritor",
+      "description": "Escreve o roteiro de viagem. Chamado APÓS os dados do clima estarem disponíveis.",
+      "model": "gpt-4o-mini",
+      "instructions": "Você é um guia de viagem.\n1. Procure pelos dados climáticos fornecidos pelo pesquisador.\n2. Escreva um roteiro curto baseado nesse clima.\n3. TERMINE SUA MENSAGEM COM A PALAVRA: TERMINATE",
+      "tools": []
+    },
+    {
+      "id": "agente_pesquisador",
+      "role": "Agente Pesquisador",
+      "description": "Obtém dados climáticos. Chamado PRIMEIRO.",
+      "model": "gpt-4o-mini",
+      "instructions": "Você é um pesquisador.\n1. Chame 'consultar_clima' para a cidade solicitada.\n2. Relate a temperatura e a condição.\n3. NÃO escreva um roteiro. Apenas relate os dados.",
+      "tools": [
+        "consultar_clima"
+      ]
+    }
+  ],
+  "workflow": {
+    "type": "group_chat",
+    "steps": [
+      {
+        "id": "participant_1764099415951",
+        "type": "agent",
+        "agent": "agente_escritor",
+        "input_template": "{{user_input}}"
+      },
+      {
+        "id": "participant_1764099420069",
+        "type": "agent",
+        "agent": "agente_pesquisador",
+        "input_template": "{{user_input}}"
+      }
+    ],
+    "start_step": "participant_1764099415951",
+    "manager_model": "gpt-4o-mini",
+    "manager_instructions": "Você gerencia uma equipe de planejamento de viagens.\nSequência:\n1. O usuário pede uma viagem.\n2. Você seleciona 'agente_pesquisador' para obter o clima.\n3. Assim que o clima for conhecido, você seleciona 'agente_escritor'.\n4. Se 'agente_escritor' disser TERMINATE, você finaliza.",
+    "max_rounds": 10,
+    "termination_condition": "TERMINATE"
+  }
+}

@@ -194,6 +194,24 @@ class AgentFrameworkExecutor:
             if not entity_obj:
                 raise EntityNotFoundError(f"Entity object for '{entity_id}' not found")
 
+            # Check for dynamic workflow config from request
+            workflow_config = request.extra_body.get("workflow_config") if request.extra_body else None
+            
+            # If no config in request, but entity_obj is a dict (from JSON discovery), use it
+            if not workflow_config and isinstance(entity_obj, dict):
+                workflow_config = entity_obj
+
+            if workflow_config:
+                logger.info(f"Executing dynamic workflow from config for entity: {entity_id}")
+                try:
+                    entity_obj = await self._build_dynamic_workflow(workflow_config)
+                    # Override type to workflow since we built a workflow
+                    entity_info.type = "workflow" 
+                except Exception as e:
+                    logger.error(f"Failed to build dynamic workflow: {e}")
+                    yield {"type": "error", "message": f"Failed to build dynamic workflow: {e}"}
+                    return
+
             logger.info(f"Executing {entity_info.type}: {entity_id}")
 
             # Extract session_id from request for trace context
@@ -357,7 +375,443 @@ class AgentFrameworkExecutor:
                         metadata={
                             "entity_id": entity_id,
                             "type": "workflow_session",
-                            "created_at": str(int(time.time())),
+                            "created_at": str(int(time.time)),
+                        },
+                        conversation_id=conversation_id,
+                    )
+
+            # Get session-scoped checkpoint storage (InMemoryCheckpointStorage from conv_data)
+            # Each conversation has its own storage instance, providing automatic session isolation.
+            # This storage is passed to workflow.run_stream() which sets it as runtime override,
+            # ensuring all checkpoint operations (save/load) use THIS conversation's storage.
+            # The framework guarantees runtime storage takes precedence over build-time storage.
+            checkpoint_storage = self.checkpoint_manager.get_checkpoint_storage(conversation_id)
+
+            # Check for HIL responses first
+            hil_responses = self._extract_workflow_hil_responses(request.input)
+
+            # Determine checkpoint_id (explicit or auto-latest for HIL responses)
+            checkpoint_id = None
+            if request.extra_body and "checkpoint_id" in request.extra_body:
+                checkpoint_id = request.extra_body["checkpoint_id"]
+                logger.debug(f"Using explicit checkpoint_id from request: {checkpoint_id}")
+            elif hil_responses:
+                # Only auto-resume from latest checkpoint when we have HIL responses
+                # Regular "Run" clicks should start fresh, not resume from checkpoints
+                checkpoints = await checkpoint_storage.list_checkpoints()  # No workflow_id filter needed!
+                if checkpoints:
+                    latest = max(checkpoints, key=lambda cp: cp.timestamp)
+                    checkpoint_id = latest.checkpoint_id
+                    logger.info(f"Auto-resuming from latest checkpoint in session {conversation_id}: {checkpoint_id}")
+                else:
+                    logger.warning(f"HIL responses received but no checkpoints in session {conversation_id}")
+
+            if hil_responses:
+                # HIL continuation mode requires checkpointing
+                if not checkpoint_id:
+                    error_msg = (
+                        "Cannot process HIL responses without a checkpoint. "
+                        "Workflows using HIL must be configured with .with_checkpointing() "
+                        "and a checkpoint must exist before sending responses."
+                    )
+                    logger.error(error_msg)
+                    yield {"type": "error", "message": error_msg}
+                    return
+
+                logger.info(f"Resuming workflow with HIL responses for {len(hil_responses)} request(s)")
+
+                # Unwrap primitive responses if they're wrapped in {response: value} format
+                from ._utils import parse_input_for_type
+
+                unwrapped_responses = {}
+                for request_id, response_value in hil_responses.items():
+                    if isinstance(response_value, dict) and "response" in response_value:
+                        response_value = response_value["response"]
+                    unwrapped_responses[request_id] = response_value
+
+                hil_responses = unwrapped_responses
+
+                # NOTE: Two-step approach for stateless HTTP (framework limitation):
+                # 1. Restore checkpoint to load pending requests into workflow's in-memory state
+                # 2. Then send responses using send_responses_streaming
+                # Future: Framework should support run_stream(checkpoint_id, responses) in single call
+                # (checkpoint_id is guaranteed to exist due to earlier validation)
+                logger.debug(f"Restoring checkpoint {checkpoint_id} then sending HIL responses")
+
+                try:
+                    # Step 1: Restore checkpoint to populate workflow's in-memory pending requests
+                    restored = False
+                    async for _event in workflow.run_stream(
+                        checkpoint_id=checkpoint_id, checkpoint_storage=checkpoint_storage
+                    ):
+                        restored = True
+                        break  # Stop immediately after restoration, don't process events
+
+                    if not restored:
+                        raise RuntimeError("Checkpoint restoration did not yield any events")
+
+                    # Reset running flags so we can call send_responses_streaming
+                    if hasattr(workflow, "_is_running"):
+                        workflow._is_running = False
+                    if hasattr(workflow, "_runner") and hasattr(workflow._runner, "_running"):
+                        workflow._runner._running = False
+
+                    # Extract response types from restored workflow and convert responses to proper types
+                    try:
+                        if hasattr(workflow, "_runner") and hasattr(workflow._runner, "context"):
+                            runner_context = workflow._runner.context
+                            pending_requests_dict = await runner_context.get_pending_request_info_events()
+
+                            converted_responses = {}
+                            for request_id, response_value in hil_responses.items():
+                                if request_id in pending_requests_dict:
+                                    pending_request = pending_requests_dict[request_id]
+                                    if hasattr(pending_request, "response_type"):
+                                        response_type = pending_request.response_type
+                                        try:
+                                            response_value = parse_input_for_type(response_value, response_type)
+                                            logger.debug(
+                                                f"Converted HIL response for {request_id} to {type(response_value)}"
+                                            )
+                                        except Exception as e:
+                                            logger.warning(f"Failed to convert HIL response for {request_id}: {e}")
+
+                                converted_responses[request_id] = response_value
+
+                            hil_responses = converted_responses
+                    except Exception as e:
+                        logger.warning(f"Could not convert HIL responses to proper types: {e}")
+
+                    # Step 2: Now send responses to the in-memory workflow
+                    async for event in workflow.send_responses_streaming(hil_responses):
+                        for trace_event in trace_collector.get_pending_events():
+                            yield trace_event
+                        yield event
+
+                except (AttributeError, ValueError, RuntimeError) as e:
+                    error_msg = f"Failed to send HIL responses: {e}"
+                    logger.error(error_msg)
+                    yield {"type": "error", "message": error_msg}
+
+            elif checkpoint_id:
+                # Resume from checkpoint (explicit or auto-latest) using unified API
+                logger.info(f"Resuming workflow from checkpoint {checkpoint_id} in session {conversation_id}")
+
+                try:
+                    async for event in workflow.run_stream(
+                        checkpoint_id=checkpoint_id, checkpoint_storage=checkpoint_storage
+                    ):
+                        if isinstance(event, RequestInfoEvent):
+                            self._enrich_request_info_event_with_response_schema(event, workflow)
+
+                        for trace_event in trace_collector.get_pending_events():
+                            yield trace_event
+
+                        yield event
+
+                        # Note: Removed break on RequestInfoEvent - continue yielding all events
+                        # The workflow is already paused by ctx.request_info() in the framework
+                        # DevUI should continue yielding events even during HIL pause
+
+                except ValueError as e:
+                    error_msg = f"Cannot resume from checkpoint: {e}"
+                    logger.error(error_msg)
+                    yield {"type": "error", "message": error_msg}
+
+            else:
+                # First run - pass DevUI's checkpoint storage to enable checkpointing
+                logger.info(f"Starting fresh workflow in session {conversation_id}")
+
+                parsed_input = await self._parse_workflow_input(workflow, request.input)
+
+                async for event in workflow.run_stream(parsed_input, checkpoint_storage=checkpoint_storage):
+                    if isinstance(event, RequestInfoEvent):
+                        self._enrich_request_info_event_with_response_schema(event, workflow)
+
+                    for trace_event in trace_collector.get_pending_events():
+                        yield trace_event
+
+                    yield event
+
+                    # Note: Removed break on RequestInfoEvent - continue yielding all events
+                    # The workflow is already paused by ctx.request_info() in the framework
+                    # DevUI should continue yielding events even during HIL pause
+
+        except Exception as e:
+            logger.error(f"Error in workflow execution: {e}")
+            yield {"type": "error", "message": f"Workflow execution error: {e!s}"}
+
+    async def _build_dynamic_workflow(self, workflow_config: dict) -> Any:
+        """Build a workflow dynamically from configuration."""
+        try:
+            from src.worker.engine import WorkflowEngine
+            from src.worker.config import WorkerConfig, ResourcesConfig, WorkflowConfig as PydanticWorkflowConfig
+        except ImportError:
+            logger.error("Could not import src.worker modules. Dynamic workflow execution unavailable.")
+            raise ImportError("Worker modules not available")
+
+        # Determine if we have a full WorkerConfig structure or just the workflow part
+        if "workflow" in workflow_config and isinstance(workflow_config["workflow"], dict):
+            root_config = workflow_config
+            wf_data = workflow_config["workflow"]
+        else:
+            root_config = workflow_config
+            wf_data = workflow_config
+
+        # 1. Pre-load agents
+        nodes = wf_data.get("nodes", [])
+        steps = wf_data.get("steps", [])
+        
+        # SANITIZATION: If nodes contain internal framework types, ignore them
+        # This happens if the config was extracted from a running workflow instance
+        # if nodes:
+        #     internal_nodes = [n for n in nodes if isinstance(n, dict) and n.get("type", "").startswith("_")]
+        #     if internal_nodes:
+        #         logger.warning(f"Found {len(internal_nodes)} internal nodes in config. Ignoring 'nodes' and using 'steps' if available.")
+        #         nodes = []
+        #         wf_data["nodes"] = [] # Clear from config
+        #         # Ensure steps are used
+        #         if not steps and "steps" in wf_data:
+        #              steps = wf_data["steps"]
+        
+        # SANITIZATION 2: Fix "DAG but no nodes" issue
+        # If type is explicitly 'dag' but we have no nodes and we DO have steps,
+        # it's likely a high-level workflow that got mislabeled (e.g. by frontend).
+        # We remove the type so the logic below can default it to 'sequential' (or whatever steps imply).
+        if wf_data.get("type") == "dag" and not nodes and steps:
+            logger.warning("Workflow config has type='dag' but no nodes (and has steps). Removing type to allow fallback to 'sequential'.")
+            wf_data.pop("type", None)
+
+        agent_ids = []
+        
+        # Extract agents from nodes (DAG)
+        logger.info(f"Extracting agents from {len(nodes)} nodes...")
+        for node in nodes:
+            node_type = str(node.get("type", "")).lower().strip()
+            if node_type == "agent":
+                # Align extraction logic with WorkflowEngine
+                aid = node.get("agent") or node.get("config", {}).get("agent_id")
+                if not aid:
+                    aid = node.get("config", {}).get("id") or node.get("config", {}).get("agent")
+                
+                # Fallback to node ID (Critical for some configurations)
+                if not aid:
+                    aid = node.get("id")
+                
+                if aid:
+                    agent_ids.append(aid)
+
+        # Extract agents from steps (Legacy/High-Level)
+        logger.info(f"Extracting agents from {len(steps)} steps...")
+        for step in steps:
+            aid = step.get("agent")
+            if aid:
+                agent_ids.append(aid)
+        
+        logger.info(f"Extracted agent IDs: {agent_ids}")
+        
+        # Remove duplicates
+        agent_ids = list(set(agent_ids))
+        
+        loaded_agents = {}
+        for aid in agent_ids:
+            # Use load_entity to get the agent instance
+            logger.info(f"Loading agent entity: {aid}")
+            try:
+                agent = await self.entity_discovery.load_entity(aid, checkpoint_manager=self.checkpoint_manager)
+                if agent:
+                    # IMPORTANTE: Se o load_entity resolveu por nome, o 'aid' original (nome) deve apontar para o agente
+                    # Mas também devemos garantir que o ID real do agente esteja mapeado, pois o Engine pode usar qualquer um
+                    loaded_agents[aid] = agent
+                    if hasattr(agent, "id") and agent.id != aid:
+                        loaded_agents[agent.id] = agent
+                        logger.info(f"Mapped agent alias: {aid} -> {agent.id}")
+                    
+                    logger.info(f"Successfully loaded agent: {aid}")
+                else:
+                    logger.error(f"Agent {aid} returned None")
+                    raise ValueError(f"Agent {aid} returned None")
+            except Exception as e:
+                # Se falhar ao carregar, pode ser que o 'aid' seja um ID de nó que não é um agente registrado
+                # Ex: um nó 'human' ou 'tool' que foi incorretamente identificado como agente
+                # Vamos logar como aviso e continuar, esperando que o Engine se vire ou falhe mais tarde se for crítico
+                logger.warning(f"Could not load agent '{aid}': {e}. This might be a non-agent node ID.")
+                # Não relançar exceção aqui para permitir que o fluxo continue se o agente não for essencial
+                # ou se o Engine tiver outra forma de criá-lo (ex: HumanAgent)
+
+        logger.info(f"Total loaded agents: {len(loaded_agents)}")
+        
+        # 2. Create Dummy Config
+        # Only default to DAG if no type is specified AND nodes are present
+        if "type" not in wf_data:
+            if nodes:
+                wf_data["type"] = "dag"
+            elif steps:
+                # Default to sequential if steps are present but no type
+                wf_data["type"] = "sequential"
+            
+        try:
+            wf_config = PydanticWorkflowConfig(**wf_data)
+            
+            # Extract resources if present in workflow_config
+            # This allows dynamic workflows to define their own tools/models
+            resources_data = root_config.get("resources", {})
+            # Handle both dict (raw) and object (pydantic) access if needed, though here it's likely dict
+            models_data = resources_data.get("models", {"default": {"type": "openai"}})
+            tools_data = resources_data.get("tools", [])
+            
+            # Extract agents definition if present
+            agents_data = root_config.get("agents", [])
+
+            # Create a dummy config required by WorkflowEngine
+            dummy_config = WorkerConfig(
+                name="dynamic_workflow",
+                resources=ResourcesConfig(models=models_data, tools=tools_data),
+                agents=agents_data, 
+                workflow=wf_config
+            )
+        except Exception as e:
+            logger.error(f"Invalid workflow configuration: {e}")
+            raise
+
+        # Pass preloaded_agents to WorkflowEngine (Cleaner than monkey-patching)
+        engine = WorkflowEngine(dummy_config, preloaded_agents=loaded_agents)
+        
+        # 4. Build Workflow (Auto-detect DAG vs High-Level)
+        engine.build()
+        
+        return engine._workflow
+
+    async def _execute_agent(
+        self, agent: AgentProtocol, request: AgentFrameworkRequest, trace_collector: Any
+    ) -> AsyncGenerator[Any, None]:
+        """Execute Agent Framework agent with trace collection and optional thread support.
+
+        Args:
+            agent: Agent object to execute
+            request: Request to execute
+            trace_collector: Trace collector to get events from
+
+        Yields:
+            Agent update events and trace events
+        """
+        try:
+            # Emit agent lifecycle start event
+            from .models._openai_custom import AgentStartedEvent
+
+            yield AgentStartedEvent()
+
+            # Convert input to proper ChatMessage or string
+            user_message = self._convert_input_to_chat_message(request.input)
+
+            # Get thread from conversation parameter (OpenAI standard!)
+            thread = None
+            conversation_id = request.get_conversation_id()
+            if conversation_id:
+                thread = self.conversation_store.get_thread(conversation_id)
+                if thread:
+                    logger.debug(f"Using existing conversation: {conversation_id}")
+                else:
+                    logger.warning(f"Conversation {conversation_id} not found, proceeding without thread")
+
+            if isinstance(user_message, str):
+                logger.debug(f"Executing agent with text input: {user_message[:100]}...")
+            else:
+                logger.debug(f"Executing agent with multimodal ChatMessage: {type(user_message)}")
+            # Check if agent supports streaming
+            if hasattr(agent, "run_stream") and callable(agent.run_stream):
+                # Use Agent Framework's native streaming with optional thread
+                if thread:
+                    async for update in agent.run_stream(user_message, thread=thread):
+                        for trace_event in trace_collector.get_pending_events():
+                            yield trace_event
+
+                        yield update
+                else:
+                    async for update in agent.run_stream(user_message):
+                        for trace_event in trace_collector.get_pending_events():
+                            yield trace_event
+
+                        yield update
+            elif hasattr(agent, "run") and callable(agent.run):
+                # Non-streaming agent - use run() and yield complete response
+                logger.info("Agent lacks run_stream(), using run() method (non-streaming)")
+                if thread:
+                    response = await agent.run(user_message, thread=thread)
+                else:
+                    response = await agent.run(user_message)
+
+                # Yield trace events before response
+                for trace_event in trace_collector.get_pending_events():
+                    yield trace_event
+
+                # Yield the complete response (mapper will convert to streaming events)
+                yield response
+            else:
+                raise ValueError("Agent must implement either run() or run_stream() method")
+
+            # Emit agent lifecycle completion event
+            from .models._openai_custom import AgentCompletedEvent
+
+            yield AgentCompletedEvent()
+
+        except Exception as e:
+            logger.error(f"Error in agent execution: {e}")
+            # Emit agent lifecycle failure event
+            from .models._openai_custom import AgentFailedEvent
+
+            yield AgentFailedEvent(error=e)
+
+            # Still yield the error for backward compatibility
+            yield {"type": "error", "message": f"Agent execution error: {e!s}"}
+
+    async def _execute_workflow(
+        self, workflow: Any, request: AgentFrameworkRequest, trace_collector: Any
+    ) -> AsyncGenerator[Any, None]:
+        """Execute Agent Framework workflow with checkpoint support via conversation items.
+
+        Args:
+            workflow: Workflow object to execute
+            request: Request to execute
+            trace_collector: Trace collector to get events from
+
+        Yields:
+            Workflow events and trace events
+        """
+        try:
+            entity_id = request.get_entity_id() or "unknown"
+
+            # Get or create session conversation for checkpoint storage
+            conversation_id = request.get_conversation_id()
+            if not conversation_id:
+                # Create default session if not provided
+                import time
+                import uuid
+
+                conversation_id = f"session_{entity_id}_{uuid.uuid4().hex[:8]}"
+                logger.info(f"Created new workflow session: {conversation_id}")
+
+                # Create conversation in store
+                self.conversation_store.create_conversation(
+                    metadata={
+                        "entity_id": entity_id,
+                        "type": "workflow_session",
+                        "created_at": str(int(time.time())),
+                    },
+                    conversation_id=conversation_id,
+                )
+            else:
+                # Validate conversation exists, create if missing (handles deleted conversations)
+                import time
+
+                existing = self.conversation_store.get_conversation(conversation_id)
+                if not existing:
+                    logger.warning(f"Conversation {conversation_id} not found (may have been deleted), recreating")
+                    self.conversation_store.create_conversation(
+                        metadata={
+                            "entity_id": entity_id,
+                            "type": "workflow_session",
+                            "created_at": str(int(time.time)),
                         },
                         conversation_id=conversation_id,
                     )

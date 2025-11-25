@@ -9,6 +9,7 @@ import os
 import secrets
 from collections.abc import AsyncGenerator, Awaitable, Callable
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request
@@ -25,6 +26,9 @@ from .models import AgentFrameworkRequest, MetaResponse, OpenAIError
 from .models._discovery_models import Deployment, DeploymentConfig, DiscoveryResponse, EntityInfo
 
 logger = logging.getLogger(__name__)
+
+# Diretório raiz do projeto (onde está o run.py)
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
 # No AuthMiddleware class needed - we'll use the decorator pattern instead
@@ -100,6 +104,65 @@ class DevServer:
         logger.error(f"{context} failed: {error}", exc_info=True)
         return f"{context} failed"
 
+    def _enrich_workflow_dump(
+        self, workflow_dump: dict[str, Any] | None, source_config: dict[str, Any] | None
+    ) -> dict[str, Any] | None:
+        """Inject original node metadata into the workflow dump for UI consumption."""
+
+        if not workflow_dump or not isinstance(workflow_dump, dict):
+            return workflow_dump
+
+        if not source_config or not isinstance(source_config, dict):
+            return workflow_dump
+
+        workflow_section = source_config.get("workflow")
+        if not isinstance(workflow_section, dict):
+            return workflow_dump
+
+        nodes = []
+        if isinstance(workflow_section.get("nodes"), list):
+            nodes = workflow_section["nodes"]  # type: ignore[assignment]
+        elif isinstance(workflow_section.get("steps"), list):
+            nodes = workflow_section["steps"]  # type: ignore[assignment]
+
+        executors = workflow_dump.get("executors")
+        if not isinstance(executors, dict) or not nodes:
+            return workflow_dump
+
+        for node in nodes:
+            if not isinstance(node, dict):
+                continue
+            node_id = node.get("id")
+            if not node_id or node_id not in executors:
+                continue
+
+            executor_payload = executors[node_id]
+            if not isinstance(executor_payload, dict):
+                continue
+
+            node_type = node.get("type")
+            if not node_type and node.get("agent"):
+                node_type = "agent"
+
+            if node_type:
+                executor_payload["node_type"] = node_type
+
+            if node.get("agent"):
+                executor_payload["agent"] = node["agent"]
+
+            if node.get("input_template"):
+                executor_payload["input_template"] = node["input_template"]
+
+            config_payload = node.get("config") or {}
+            if isinstance(config_payload, dict):
+                # Preserve agent reference for downstream reconstruction
+                if node.get("agent") and "agent_id" not in config_payload:
+                    config_payload = {**config_payload, "agent_id": node["agent"]}
+                if config_payload:
+                    executor_payload["config"] = config_payload
+
+        return workflow_dump
+
     def _require_developer_mode(self, feature: str = "operation") -> None:
         """Check if current mode allows developer operations.
 
@@ -142,7 +205,15 @@ class DevServer:
                 discovery = self.executor.entity_discovery
                 for entity in self._pending_entities:
                     try:
-                        entity_info = await discovery.create_entity_info_from_object(entity, source="in-memory")
+                        entity_info = await discovery.create_entity_info_from_object(entity, source="in_memory")
+                        
+                        # FORCE ID preservation for in-memory entities if they have a stable ID
+                        # This is critical for dynamic workflows that reference agents by their config ID
+                        # if hasattr(entity, "id") and entity.id:
+                            # Check if ID looks like a UUID or generated ID (optional safety)
+                            # But generally if the user set an ID on the object, we should respect it for in-memory registration
+                            # entity_info.id = entity.id
+                            
                         discovery.register_entity(entity_info.id, entity_info, entity)
                         logger.info(f"Registered in-memory entity: {entity_info.id}")
                     except Exception as e:
@@ -413,7 +484,11 @@ class DevServer:
                 executor = await self._ensure_executor()
                 # Use list_entities() instead of discover_entities() to get already-registered entities
                 entities = executor.entity_discovery.list_entities()
-                return DiscoveryResponse(entities=entities)
+                
+                # Filter out hidden entities (e.g. internal templates)
+                visible_entities = [e for e in entities if not e.metadata.get("hidden", False)]
+                
+                return DiscoveryResponse(entities=visible_entities)
             except Exception as e:
                 logger.error(f"Error listing entities: {e}")
                 raise HTTPException(status_code=500, detail=f"Entity listing failed: {e!s}") from e
@@ -443,6 +518,9 @@ class DevServer:
                     # Entity object already loaded by load_entity() above
                     # Get workflow structure
                     workflow_dump = None
+                    source_config = getattr(entity_obj, "_source_config", None)
+
+                    # Prefer the serialized workflow graph from the framework for visualization
                     if hasattr(entity_obj, "to_dict") and callable(getattr(entity_obj, "to_dict", None)):
                         try:
                             workflow_dump = entity_obj.to_dict()  # type: ignore[attr-defined]
@@ -470,6 +548,11 @@ class DevServer:
                                 workflow_dump = raw_dump
                     elif hasattr(entity_obj, "__dict__"):
                         workflow_dump = {k: v for k, v in entity_obj.__dict__.items() if not k.startswith("_")}
+
+                    if workflow_dump and source_config:
+                        workflow_dump = self._enrich_workflow_dump(workflow_dump, source_config)
+                    elif workflow_dump is None and source_config:
+                        workflow_dump = source_config
 
                     # Get input schema information
                     input_schema = {}
@@ -1015,6 +1098,269 @@ class DevServer:
         # Checkpoint Management - Now handled through conversation items API
         # Checkpoints are exposed as conversation items with type="checkpoint"
         # ============================================================================
+
+        # ============================================================================
+        # Studio / Debug Endpoints
+        # ============================================================================
+
+        @app.post("/v1/debug/save_studio_flow")
+        async def save_studio_flow(config: dict[str, Any]) -> dict[str, Any]:
+            """Save the studio flow configuration to a test file."""
+            self._require_developer_mode("save studio flow")
+            try:
+                import json
+                import time
+                import re
+
+                # Create output directory if it doesn't exist
+                # Changed from tests/studio_output to exemplos per user request
+                output_dir = PROJECT_ROOT / "exemplos"
+                output_dir.mkdir(parents=True, exist_ok=True)
+
+                # Generate filename
+                name = config.get("name", "")
+                if name:
+                    # Sanitize name
+                    safe_name = re.sub(r'[^\w\-_]', '_', name.lower())
+                    filename = f"{safe_name}.json"
+                else:
+                    timestamp = int(time.time())
+                    filename = f"flow_{timestamp}.json"
+                
+                file_path = output_dir / filename
+
+                # Save to file
+                with open(file_path, "w", encoding="utf-8") as f:
+                    json.dump(config, f, indent=2)
+
+                logger.info(f"Saved studio flow to {file_path}")
+
+                return {
+                    "success": True,
+                    "message": f"Flow saved to {file_path}",
+                    "path": str(file_path),
+                    "filename": filename
+                }
+
+            except Exception as e:
+                logger.error(f"Error saving studio flow: {e}")
+                raise HTTPException(status_code=500, detail=f"Failed to save flow: {e!s}") from e
+
+        @app.post("/v1/agents")
+        async def save_agent(agent: dict[str, Any]) -> dict[str, Any]:
+            """Salvar um agente individual na pasta exemplos/agentes/."""
+            self._require_developer_mode("save agent")
+            try:
+                import json
+                import re
+
+                output_dir = PROJECT_ROOT / "exemplos" / "agentes"
+                output_dir.mkdir(parents=True, exist_ok=True)
+
+                agent_id = agent.get("id", "")
+                if agent_id:
+                    safe_name = re.sub(r'[^\w\-_]', '_', agent_id.lower())
+                    filename = f"{safe_name}.json"
+                else:
+                    import time
+                    filename = f"agent_{int(time.time())}.json"
+                
+                file_path = output_dir / filename
+
+                with open(file_path, "w", encoding="utf-8") as f:
+                    json.dump(agent, f, indent=2, ensure_ascii=False)
+
+                logger.info(f"Saved agent to {file_path}")
+
+                return {
+                    "success": True,
+                    "message": f"Agent saved to {file_path}",
+                    "path": str(file_path),
+                    "filename": filename,
+                    "agent": agent
+                }
+
+            except Exception as e:
+                logger.error(f"Error saving agent: {e}")
+                raise HTTPException(status_code=500, detail=f"Failed to save agent: {e!s}") from e
+
+        @app.get("/v1/agents")
+        async def list_agents() -> dict[str, Any]:
+            """Listar todos os agentes salvos em exemplos/agentes/."""
+            try:
+                import json
+
+                agents_dir = PROJECT_ROOT / "exemplos" / "agentes"
+                agents = []
+                
+                if agents_dir.exists():
+                    for file_path in agents_dir.glob("*.json"):
+                        try:
+                            with open(file_path, encoding="utf-8") as f:
+                                agent = json.load(f)
+                                agent["_file"] = file_path.name
+                                agents.append(agent)
+                        except Exception as e:
+                            logger.warning(f"Failed to load agent {file_path}: {e}")
+
+                return {
+                    "object": "list",
+                    "data": agents,
+                    "count": len(agents)
+                }
+
+            except Exception as e:
+                logger.error(f"Error listing agents: {e}")
+                raise HTTPException(status_code=500, detail=f"Failed to list agents: {e!s}") from e
+
+        @app.delete("/v1/agents/{agent_id}")
+        async def delete_agent(agent_id: str) -> dict[str, Any]:
+            """Deletar um agente pelo ID."""
+            self._require_developer_mode("delete agent")
+            try:
+                import re
+
+                agents_dir = PROJECT_ROOT / "exemplos" / "agentes"
+                safe_name = re.sub(r'[^\w\-_]', '_', agent_id.lower())
+                file_path = agents_dir / f"{safe_name}.json"
+
+                if file_path.exists():
+                    file_path.unlink()
+                    logger.info(f"Deleted agent {file_path}")
+                    return {"success": True, "message": f"Agent {agent_id} deleted"}
+                else:
+                    raise HTTPException(status_code=404, detail=f"Agent {agent_id} not found")
+
+            except HTTPException:
+                raise
+            except Exception as e:
+                logger.error(f"Error deleting agent: {e}")
+                raise HTTPException(status_code=500, detail=f"Failed to delete agent: {e!s}") from e
+
+        @app.post("/v1/workflows")
+        async def save_workflow(workflow: dict[str, Any]) -> dict[str, Any]:
+            """Salvar um workflow na pasta exemplos/workflows/."""
+            self._require_developer_mode("save workflow")
+            try:
+                import json
+                import re
+
+                output_dir = PROJECT_ROOT / "exemplos" / "workflows"
+                output_dir.mkdir(parents=True, exist_ok=True)
+
+                name = workflow.get("name", "")
+                if name:
+                    safe_name = re.sub(r'[^\w\-_]', '_', name.lower())
+                    filename = f"{safe_name}.json"
+                else:
+                    import time
+                    filename = f"workflow_{int(time.time())}.json"
+                
+                file_path = output_dir / filename
+
+                with open(file_path, "w", encoding="utf-8") as f:
+                    json.dump(workflow, f, indent=2, ensure_ascii=False)
+
+                logger.info(f"Saved workflow to {file_path}")
+
+                return {
+                    "success": True,
+                    "message": f"Workflow saved to {file_path}",
+                    "path": str(file_path),
+                    "filename": filename
+                }
+
+            except Exception as e:
+                logger.error(f"Error saving workflow: {e}")
+                raise HTTPException(status_code=500, detail=f"Failed to save workflow: {e!s}") from e
+
+        @app.get("/v1/workflows")
+        async def list_workflows() -> dict[str, Any]:
+            """Listar todos os workflows salvos em exemplos/workflows/."""
+            try:
+                import json
+
+                workflows_dir = PROJECT_ROOT / "exemplos" / "workflows"
+                workflows = []
+                
+                if workflows_dir.exists():
+                    for file_path in workflows_dir.glob("*.json"):
+                        try:
+                            with open(file_path, encoding="utf-8") as f:
+                                wf = json.load(f)
+                                wf["_file"] = file_path.name
+                                workflows.append(wf)
+                        except Exception as e:
+                            logger.warning(f"Failed to load workflow {file_path}: {e}")
+
+                return {
+                    "object": "list",
+                    "data": workflows,
+                    "count": len(workflows)
+                }
+
+            except Exception as e:
+                logger.error(f"Error listing workflows: {e}")
+                raise HTTPException(status_code=500, detail=f"Failed to list workflows: {e!s}") from e
+
+        @app.delete("/v1/workflows/{filename}")
+        async def delete_workflow(filename: str) -> dict[str, Any]:
+            """Deletar um workflow da pasta exemplos/workflows/."""
+            self._require_developer_mode("delete workflow")
+            try:
+                workflows_dir = PROJECT_ROOT / "exemplos" / "workflows"
+                file_path = workflows_dir / filename
+
+                if not file_path.exists():
+                    raise HTTPException(status_code=404, detail=f"Workflow not found: {filename}")
+
+                # Security: ensure the file is inside workflows_dir
+                if not file_path.resolve().is_relative_to(workflows_dir.resolve()):
+                    raise HTTPException(status_code=400, detail="Invalid filename")
+
+                file_path.unlink()
+                logger.info(f"Deleted workflow: {file_path}")
+
+                return {
+                    "success": True,
+                    "message": f"Workflow {filename} deleted",
+                    "filename": filename
+                }
+
+            except HTTPException:
+                raise
+            except Exception as e:
+                logger.error(f"Error deleting workflow: {e}")
+                raise HTTPException(status_code=500, detail=f"Failed to delete workflow: {e!s}") from e
+
+        @app.get("/v1/tools")
+        async def list_tools() -> dict[str, Any]:
+            """List available tools discovered in the workspace."""
+            try:
+                from src.worker.discovery import discover_tools
+                
+                tools = discover_tools()
+                return {
+                    "object": "list",
+                    "data": [tool.model_dump() for tool in tools],
+                    "count": len(tools)
+                }
+            except Exception as e:
+                logger.error(f"Error listing tools: {e}")
+                raise HTTPException(status_code=500, detail=f"Failed to list tools: {e!s}") from e
+
+        @app.delete("/v1/entities/{entity_id}")
+        async def delete_entity(entity_id: str) -> dict[str, str]:
+            """Delete an entity."""
+            try:
+                executor = await self._ensure_executor()
+                executor.entity_discovery.delete_entity(entity_id)
+                return {"status": "success", "message": f"Entity {entity_id} deleted"}
+            except ValueError as e:
+                raise HTTPException(status_code=404, detail=str(e)) from e
+            except Exception as e:
+                logger.error(f"Error deleting entity {entity_id}: {e}")
+                raise HTTPException(status_code=500, detail=f"Failed to delete entity: {e!s}") from e
 
     async def _stream_execution(
         self, executor: AgentFrameworkExecutor, request: AgentFrameworkRequest

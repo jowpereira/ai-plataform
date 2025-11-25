@@ -46,6 +46,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { convertFlowToWorkflowConfig } from "@/utils/workflow-utils";
+import type { WorkflowConfig } from "@/types/workflow";
+import type { Node, Edge } from "@xyflow/react";
 
 type DebugEventHandler = (event: ExtendedResponseStreamEvent | "clear") => void;
 
@@ -402,6 +405,7 @@ export function WorkflowView({
   const [showTimeline, setShowTimeline] = useState(false);
   const [timelineMinimized, setTimelineMinimized] = useState(false);
   const [workflowResult, setWorkflowResult] = useState<string>("");
+  const [currentWorkflowConfig, setCurrentWorkflowConfig] = useState<WorkflowConfig | null>(null);
 
   // HIL (Human-in-the-Loop) state
   const [pendingHilRequests, setPendingHilRequests] = useState<
@@ -784,6 +788,11 @@ export function WorkflowView({
     return recent.map((h) => h.executorId);
   }, [executorHistory, isStreaming]);
 
+  const handleWorkflowChange = useCallback((nodes: Node[], edges: Edge[]) => {
+    const config = convertFlowToWorkflowConfig(nodes, edges);
+    setCurrentWorkflowConfig(config);
+  }, []);
+
   // Handle workflow data sending (structured input)
   const handleSendWorkflowData = useCallback(
     async (inputData: Record<string, unknown>) => {
@@ -806,6 +815,7 @@ export function WorkflowView({
           input_data: inputData,
           conversation_id: currentSession?.conversation_id || undefined, // Pass session conversation_id for checkpoint support
           checkpoint_id: selectedCheckpointId || undefined, // Pass selected checkpoint if any
+          workflow_config: currentWorkflowConfig || undefined,
         };
 
         // Clear any previous streaming state before starting new workflow execution
@@ -1434,8 +1444,8 @@ export function WorkflowView({
 
       {/* Side-by-side Layout: Workflow Graph (left) + Execution Timeline (right) */}
       <div className="flex-1 min-h-0 flex gap-0">
-        {/* Left: Workflow Visualization */}
-        <div className="flex-1 min-w-0 transition-all duration-300">
+        {/* Center: Workflow Visualization */}
+        <div className="flex-1 min-w-0 transition-all duration-300 relative">
           {workflowInfo?.workflow_dump && (
             <WorkflowFlow
               workflowDump={workflowInfo.workflow_dump}
@@ -1448,8 +1458,11 @@ export function WorkflowView({
               layoutDirection={layoutDirection}
               onLayoutDirectionChange={setLayoutDirection}
               timelineVisible={showTimeline}
+              onWorkflowChange={handleWorkflowChange}
             />
           )}
+          
+          {/* Node Properties Panel (Overlay) - Removed from here, moved to WorkflowFlow */}
         </div>
 
         {/* Right: Execution Timeline - inflates from left on first event */}

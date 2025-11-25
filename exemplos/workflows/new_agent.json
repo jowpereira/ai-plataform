@@ -1,0 +1,57 @@
+{
+  "version": "1.0",
+  "name": "New Agent",
+  "resources": {
+    "models": {
+      "gpt-4o-mini": {
+        "type": "azure-openai",
+        "deployment": "gpt-4o-mini"
+      }
+    },
+    "tools": [
+      {
+        "id": "consultar_clima",
+        "path": "mock_tools.basic:consultar_clima",
+        "description": "Retorna previão do tempo simulada"
+      }
+    ]
+  },
+  "agents": [
+    {
+      "id": "agente_escritor",
+      "role": "Agente Escritor",
+      "description": "Agente especializado em escrever artigos.",
+      "model": "gpt-4o-mini",
+      "instructions": "Instruções:\n- Após receber relatório do clima, escrever sobre\n  1-Cultura local\n  2-Clima\n  3-Culinária\n - Estruture um roteiro de viagem",
+      "tools": []
+    },
+    {
+      "id": "agente_pesquisador",
+      "role": "Agente Pesquisador",
+      "description": "Agente especializado em pesquisa climática.",
+      "model": "gpt-4o-mini",
+      "instructions": "Você é um pesquisador climático.",
+      "tools": [
+        "consultar_clima"
+      ]
+    }
+  ],
+  "workflow": {
+    "type": "sequential",
+    "steps": [
+      {
+        "id": "step_1764098349053",
+        "type": "agent",
+        "agent": "agente_pesquisador",
+        "input_template": "{{user_input}}"
+      },
+      {
+        "id": "step_1764098355206",
+        "type": "agent",
+        "agent": "agente_escritor",
+        "input_template": "{{previous_output}}"
+      }
+    ],
+    "start_step": "step_1764098349053"
+  }
+}

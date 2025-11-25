@@ -48,23 +48,23 @@ Este documento rastrea o progresso detalhado do desenvolvimento do módulo worke
     - [ ] Integrar mecanismo de checkpoint do framework (se disponível) ou customizado.
 
 ## Fase 4: Robustez e Observabilidade
-- [ ] **Tratamento de Erros**
-    - [ ] Adicionar políticas de Retry na configuração.
-    - [ ] Implementar Global Exception Handler.
-- [ ] **Telemetria**
-    - [ ] Estruturar logs em JSON.
-    - [ ] Adicionar tracing básico.
+- [ ] **Tracing**
+    - [ ] Integrar OpenTelemetry.
+- [ ] **Error Handling**
+    - [ ] Implementar retry policies configuráveis.
 
-## Fase 5: Futuro - Agentes Autônomos (Magentic)
-> **Observação:** Esta fase foca na evolução de "Automação Determinística" para "Resolução de Problemas Autônoma".
-- [ ] **Planejamento Autônomo (Planner)**
-    - [ ] Criar novo tipo de workflow `autonomous` ou `magentic`.
-    - [ ] Implementar `MagenticBuilder` (ou similar) para geração dinâmica de steps.
-    - [ ] Suportar definição de "Objetivos" (Goals) ao invés de "Steps" fixos.
-- [ ] **Handoff Bidirecional**
-    - [ ] Suportar `enable_return_to_previous` para fluxos de suporte complexos.
-- [ ] **Agregação Inteligente (Map-Reduce)**
-    - [ ] Implementar `ConcurrentBuilder.with_aggregator` para sintetizar múltiplas respostas.
+## Fase 5: Evolução Backend (DAG & RAG)
+- [x] **Schema Update**
+    - [x] Adicionar `NodeConfig` e `EdgeConfig` em `src/worker/config.py`.
+    - [x] Suportar tipo `dag` no `WorkflowConfig`.
+- [x] **Novos Tipos de Nós**
+    - [x] Implementar `LogicAgent` (Condition, Router).
+    - [x] Implementar `ToolAgent` (Execução de ferramentas nativas).
+- [x] **RAG & Data Strategy**
+    - [x] Criar módulo `src/worker/rag` (Loader, Splitter, Store).
+    - [x] Expor ferramentas RAG em `tools/rag_tools.py`.
+- [x] **Tool Discovery**
+    - [x] Implementar `src/worker/discovery.py` para escanear ferramentas.
 
 ## Fase 5: Interface e Ferramentas de Desenvolvimento
 
@@ -75,3 +75,19 @@ Este documento rastrea o progresso detalhado do desenvolvimento do módulo worke
   - [x] Rebranding completo para "MAIA".
   - [x] Carregamento automático de exemplos do diretório `exemplos/`.
   - [x] Renomear módulo `src.devui` para `src.maia_ui`.
+
+## Fase 6: Análise Forense e Refatoração (Alinhamento Upstream)
+- [x] **Análise Backend**
+    - [x] Comparar `src/maia_ui` com `agent_framework_devui`.
+    - [x] Verificar endpoints e mapeadores.
+- [x] **Refatoração Worker**
+    - [x] Eliminar redundância em `src/worker/engine.py` (usar `FunctionExecutor`).
+    - [x] Remover `src/worker/nodes.py`.
+    - [x] Validar uso de `WorkflowBuilder` nativo.
+    - [x] Delegar workflows de alto nível (`sequential`, `parallel`, `group_chat`, `handoff`, `router`) para os builders oficiais do framework.
+- [x] **Validação Frontend**
+    - [x] Testar conectividade real com backend.
+    - [x] Verificar listagem de entidades.
+    - [x] Implementar gerenciamento CRUD de workflows.
+    - [x] Criar página de listagem de workflows (`WorkflowListPage`).
+    - [x] Integrar edição de workflows via Studio.

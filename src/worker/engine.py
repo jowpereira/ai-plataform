@@ -21,6 +21,13 @@ class WorkflowEngine:
         steps = self.config.workflow.steps
         workflow_type = self.config.workflow.type
         
+        # TODO: Reativar DAG quando validação estiver pronta
+        if workflow_type == "dag":
+            raise NotImplementedError(
+                "DAG mode temporarily disabled. Use high-level builders: "
+                "sequential, parallel, group_chat, handoff, router."
+            )
+        
         # Mapa de step_id -> agent_instance
         step_agents = {}
         ordered_agents = []
@@ -65,10 +72,15 @@ class WorkflowEngine:
             builder = GroupChatBuilder()
             builder.participants(ordered_agents)
             
+            # Configurar max rounds
+            if self.config.workflow.max_rounds:
+                # A API correta é with_max_rounds
+                builder.with_max_rounds(self.config.workflow.max_rounds)
+            
             # Tentar encontrar um modelo padrão para o manager
-            # Usar o modelo do primeiro agente como referência ou o primeiro disponível
-            manager_model_id = None
-            if self.config.agents:
+            # Prioridade: 1. Config específica do workflow, 2. Modelo do primeiro agente
+            manager_model_id = self.config.workflow.manager_model
+            if not manager_model_id and self.config.agents:
                 manager_model_id = self.config.agents[0].model
             
             # Criar um agente manager simples
@@ -78,9 +90,16 @@ class WorkflowEngine:
                     # Isso é um hack, idealmente a factory deveria expor create_client
                     client = self.agent_factory._create_client(manager_model_id)
                     
+                    instructions = self.config.workflow.manager_instructions or "Select the next speaker based on the conversation context."
+                    
+                    # Injetar condição de término nas instruções, pois GroupChatBuilder não tem método set_termination_condition
+                    if self.config.workflow.termination_condition:
+                        term_cond = self.config.workflow.termination_condition
+                        instructions += f"\n\nIMPORTANT: If any participant says '{term_cond}', you must set 'finish' to true immediately."
+
                     builder.set_prompt_based_manager(
                         chat_client=client,
-                        instructions="Select the next speaker based on the conversation context.",
+                        instructions=instructions,
                         display_name="GroupManager"
                     )
                 except Exception as e:

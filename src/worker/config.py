@@ -42,6 +42,12 @@ class WorkflowConfig(BaseModel):
     type: Literal["sequential", "parallel", "router", "group_chat", "handoff"] = Field(..., description="Tipo de orquestração")
     start_step: Optional[str] = Field(None, description="ID do passo inicial (obrigatório para router/handoff)")
     steps: List[WorkflowStep] = Field(..., description="Lista de passos do workflow")
+    
+    # Group Chat specific fields
+    manager_model: Optional[str] = Field(None, description="Modelo a ser usado pelo Manager do Group Chat")
+    manager_instructions: Optional[str] = Field(None, description="Instruções para o Manager do Group Chat")
+    max_rounds: Optional[int] = Field(10, description="Número máximo de trocas de mensagens no Group Chat")
+    termination_condition: Optional[str] = Field(None, description="Condição de término (palavra-chave)")
 
 
 class ResourcesConfig(BaseModel):

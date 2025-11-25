@@ -8,7 +8,7 @@ import type {
   ExtendedResponseStreamEvent,
   ResponseWorkflowEventComplete,
 } from "@/types";
-import type { Workflow } from "@/types/workflow";
+import type { Workflow, NodeConfig, EdgeConfig, WorkflowConfig } from "@/types/workflow";
 import { getTypedWorkflow } from "@/types/workflow";
 
 /**
@@ -34,6 +34,7 @@ export interface WorkflowDumpExecutor {
   name?: string;
   description?: string;
   config?: Record<string, unknown>;
+  [key: string]: unknown;
 }
 
 interface RawExecutorData {
@@ -56,6 +57,20 @@ export interface WorkflowDump {
   start_executor?: string;
   end_executors?: string[];
   [key: string]: unknown; // Allow for additional properties
+}
+
+function extractWorkflowSection(
+  dump: Record<string, unknown>
+): Record<string, unknown> {
+  const workflowCandidate = dump["workflow"];
+  if (
+    workflowCandidate &&
+    typeof workflowCandidate === "object" &&
+    !Array.isArray(workflowCandidate)
+  ) {
+    return workflowCandidate as Record<string, unknown>;
+  }
+  return dump;
 }
 
 export interface NodeUpdate {
@@ -101,11 +116,13 @@ export function convertWorkflowDumpToNodes(
     startExecutorId = typedWorkflow.start_executor_id;
   } else {
     // Fall back to generic handling for backwards compatibility
-    executors = getExecutorsFromDump(workflowDump as Record<string, unknown>);
     const workflowDumpRecord = workflowDump as Record<string, unknown>;
-    startExecutorId = workflowDumpRecord?.start_executor_id as
-      | string
-      | undefined;
+    const normalizedDump = extractWorkflowSection(workflowDumpRecord);
+    executors = getExecutorsFromDump(normalizedDump);
+    startExecutorId =
+      (workflowDumpRecord?.start_executor_id as string | undefined) ??
+      (normalizedDump?.start_executor_id as string | undefined) ??
+      (normalizedDump?.start_step as string | undefined);
   }
 
   if (!executors || !Array.isArray(executors) || executors.length === 0) {
@@ -116,20 +133,30 @@ export function convertWorkflowDumpToNodes(
     return [];
   }
 
-  const nodes = executors.map((executor) => ({
-    id: executor.id,
-    type: "executor",
-    position: { x: 0, y: 0 }, // Will be set by layout algorithm
-    data: {
-      executorId: executor.id,
-      executorType: executor.type,
-      name: executor.name || executor.id,
-      state: "pending" as ExecutorState,
-      isStartNode: executor.id === startExecutorId,
-      layoutDirection: layoutDirection || "LR",
-      onNodeClick,
-    },
-  }));
+  const nodes = executors.map((executor) => {
+    const rawExecutor = executor as any;
+    const normalizedType = (rawExecutor.node_type as string) || executor.type;
+    return {
+      id: executor.id,
+      type: "executor",
+      position: { x: 0, y: 0 }, // Will be set by layout algorithm
+      data: {
+        executorId: executor.id,
+        executorType: normalizedType,
+        name: executor.name || executor.id,
+        state: "pending" as ExecutorState,
+        isStartNode: executor.id === startExecutorId,
+        layoutDirection: layoutDirection || "LR",
+        onNodeClick,
+        // Pass through configuration fields needed for reconstruction
+        agent_id: rawExecutor.agent || rawExecutor.config?.agent_id,
+        input_template: rawExecutor.input_template || rawExecutor.config?.input_template,
+        tool_id: rawExecutor.tool_id || rawExecutor.config?.tool_id,
+        expression: rawExecutor.expression || rawExecutor.config?.expression,
+        config: executor.config,
+      },
+    };
+  });
 
   return nodes;
 }
@@ -164,9 +191,9 @@ export function convertWorkflowDumpToEdges(
     });
   } else {
     // Fall back to generic handling for backwards compatibility
-    connections = getConnectionsFromDump(
-      workflowDump as Record<string, unknown>
-    );
+    const workflowDumpRecord = workflowDump as Record<string, unknown>;
+    const normalizedDump = extractWorkflowSection(workflowDumpRecord);
+    connections = getConnectionsFromDump(normalizedDump);
   }
 
   if (!connections || !Array.isArray(connections) || connections.length === 0) {
@@ -200,13 +227,15 @@ export function convertWorkflowDumpToEdges(
 function getExecutorsFromDump(
   workflowDump: Record<string, unknown>
 ): WorkflowDumpExecutor[] {
+  const normalizedDump = extractWorkflowSection(workflowDump);
+
   // First check if executors is an object (like in the actual dump structure)
   if (
-    workflowDump.executors &&
-    typeof workflowDump.executors === "object" &&
-    !Array.isArray(workflowDump.executors)
+    normalizedDump.executors &&
+    typeof normalizedDump.executors === "object" &&
+    !Array.isArray(normalizedDump.executors)
   ) {
-    const executorsObj = workflowDump.executors as Record<
+    const executorsObj = normalizedDump.executors as Record<
       string,
       RawExecutorData
     >;
@@ -220,22 +249,24 @@ function getExecutorsFromDump(
   }
 
   // Try different possible keys where executors might be stored as arrays
-  const possibleKeys = ["executors", "agents", "steps", "nodes"];
+  const possibleKeys = ["nodes", "steps", "executors", "agents"];
 
   for (const key of possibleKeys) {
-    if (workflowDump[key] && Array.isArray(workflowDump[key])) {
-      return workflowDump[key] as WorkflowDumpExecutor[];
+    if (normalizedDump[key] && Array.isArray(normalizedDump[key])) {
+      return normalizedDump[key] as WorkflowDumpExecutor[];
     }
   }
 
   // If no direct array, try to extract from nested structures
-  if (workflowDump.config && typeof workflowDump.config === "object") {
-    return getExecutorsFromDump(workflowDump.config as Record<string, unknown>);
+  if (normalizedDump.config && typeof normalizedDump.config === "object") {
+    return getExecutorsFromDump(
+      normalizedDump.config as Record<string, unknown>
+    );
   }
 
   // Fallback: create executors from any object keys that look like executor IDs
   const executors: WorkflowDumpExecutor[] = [];
-  Object.entries(workflowDump).forEach(([key, value]) => {
+  Object.entries(normalizedDump).forEach(([key, value]) => {
     if (
       typeof value === "object" &&
       value !== null &&
@@ -261,10 +292,12 @@ function getExecutorsFromDump(
 function getConnectionsFromDump(
   workflowDump: Record<string, unknown>
 ): WorkflowDumpConnection[] {
+  const normalizedDump = extractWorkflowSection(workflowDump);
+
   // Handle edge_groups structure (actual dump format)
-  if (workflowDump.edge_groups && Array.isArray(workflowDump.edge_groups)) {
+  if (normalizedDump.edge_groups && Array.isArray(normalizedDump.edge_groups)) {
     const connections: WorkflowDumpConnection[] = [];
-    workflowDump.edge_groups.forEach((group: unknown) => {
+    normalizedDump.edge_groups.forEach((group: unknown) => {
       if (typeof group === "object" && group !== null && "edges" in group) {
         const edges = (group as { edges: unknown }).edges;
         if (Array.isArray(edges)) {
@@ -297,15 +330,15 @@ function getConnectionsFromDump(
   const possibleKeys = ["connections", "edges", "transitions", "links"];
 
   for (const key of possibleKeys) {
-    if (workflowDump[key] && Array.isArray(workflowDump[key])) {
-      return workflowDump[key] as WorkflowDumpConnection[];
+    if (normalizedDump[key] && Array.isArray(normalizedDump[key])) {
+      return normalizedDump[key] as WorkflowDumpConnection[];
     }
   }
 
   // If no direct array, try to extract from nested structures
-  if (workflowDump.config && typeof workflowDump.config === "object") {
+  if (normalizedDump.config && typeof normalizedDump.config === "object") {
     return getConnectionsFromDump(
-      workflowDump.config as Record<string, unknown>
+      normalizedDump.config as Record<string, unknown>
     );
   }
 
@@ -705,4 +738,85 @@ export function consolidateBidirectionalEdges(edges: Edge[]): Edge[] {
   });
 
   return Array.from(edgeMap.values());
+}
+
+/**
+ * Converts React Flow nodes and edges to the backend WorkflowConfig format (DAG)
+ */
+export function convertFlowToWorkflowConfig(
+  nodes: Node[],
+  edges: Edge[],
+  workflowType: "dag" | "sequential" | "parallel" | "router" = "dag"
+): WorkflowConfig {
+  
+  const backendNodes: NodeConfig[] = nodes.map((node) => {
+    const data = node.data as any;
+    
+    let type = data.executorType || "agent";
+    // Normalize internal types from backend/runtime
+    if (type === "AgentExecutor") type = "agent";
+    else if (type === "ToolExecutor") type = "tool";
+    else if (type === "RouterExecutor") type = "router";
+    else if (type === "ConditionExecutor") type = "condition";
+    else if (type === "HumanExecutor") type = "human";
+    else if (type === "RagExecutor") type = "rag";
+
+    // Map ReactFlow node data to NodeConfig
+    const nodeConfig: NodeConfig = {
+      id: node.id,
+      type: type, 
+      label: data.label,
+      config: {}, // Will be populated from data properties
+    };
+
+    // Extract specific config based on type
+    if (nodeConfig.type === "tool") {
+      if (!nodeConfig.config) nodeConfig.config = {};
+      nodeConfig.config.tool_id = data.tool_id;
+    } else if (nodeConfig.type === "condition" || nodeConfig.type === "router") {
+      if (!nodeConfig.config) nodeConfig.config = {};
+      nodeConfig.config.expression = data.expression;
+    } else if (nodeConfig.type === "agent") {
+      nodeConfig.agent = data.agent_id; // Assuming agent_id is stored in data
+      nodeConfig.input_template = data.input_template;
+    } else if (nodeConfig.type === "human") {
+      nodeConfig.input_template = data.input_template;
+    }
+
+    // Copy other relevant data to config
+    if (data.config) {
+      nodeConfig.config = { ...nodeConfig.config, ...data.config };
+    }
+
+    return nodeConfig;
+  });
+
+  const backendEdges: EdgeConfig[] = edges.map((edge) => ({
+    source: edge.source,
+    target: edge.target,
+    type: edge.type || "default",
+    condition: edge.data?.condition as string | undefined,
+    label: edge.label as string | undefined,
+  }));
+
+  // Find start node (node with no incoming edges)
+  // Or use the one explicitly marked as start
+  let startStep = nodes.find(n => n.data?.isStartNode)?.id;
+  
+  if (!startStep && nodes.length > 0) {
+    const targetIds = new Set(edges.map(e => e.target));
+    const startNodes = nodes.filter(n => !targetIds.has(n.id));
+    if (startNodes.length > 0) {
+      startStep = startNodes[0].id;
+    } else {
+      startStep = nodes[0].id; // Fallback
+    }
+  }
+
+  return {
+    type: workflowType as any,
+    start_step: startStep,
+    nodes: backendNodes,
+    edges: backendEdges,
+  };
 }

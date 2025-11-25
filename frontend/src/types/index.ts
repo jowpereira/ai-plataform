@@ -94,6 +94,7 @@ export interface RunWorkflowRequest {
   input_data: Record<string, unknown>;
   conversation_id?: string;
   checkpoint_id?: string;
+  workflow_config?: import("./workflow").WorkflowConfig;
 }
 
 // OpenAI Proxy Mode Configuration

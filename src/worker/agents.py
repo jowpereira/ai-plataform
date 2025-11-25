@@ -20,7 +20,7 @@ class HumanAgent(Executor):
         self.instructions = instructions
 
     @handler
-    async def handle_message(self, message: Union[ChatMessage, List[ChatMessage], str], ctx: WorkflowContext[Union[HumanInputRequest, ChatMessage]]) -> None:
+    async def handle_message(self, message: Any, ctx: WorkflowContext[Union[HumanInputRequest, ChatMessage]]) -> Any:
         # Extrair texto para exibir ao humano
         prompt_text = ""
         if isinstance(message, str):
@@ -44,7 +44,7 @@ class HumanAgent(Executor):
             
             # Enviar resposta diretamente para o próximo passo
             await ctx.send_message(ChatMessage(role="user", text=user_response))
-            return
+            return user_response
 
         print(f"\n👤 [Entrada Humana Necessária] Passo: {self.id}")
         print(f"❓ Prompt: {prompt_text}")
@@ -52,12 +52,14 @@ class HumanAgent(Executor):
         # Send request for human input (triggers HIL in DevUI)
         req = HumanInputRequest(prompt=str(prompt_text), instructions=self.instructions)
         await ctx.send_message(req)
+        # Note: In HIL mode, we don't return here because the response comes via handle_response
 
     @response_handler
-    async def handle_response(self, request: HumanInputRequest, response: HumanInputResponse, ctx: WorkflowContext[ChatMessage]) -> None:
+    async def handle_response(self, request: HumanInputRequest, response: HumanInputResponse, ctx: WorkflowContext[ChatMessage]) -> Any:
         print(f"👤 Resposta recebida: {response.content}")
         # Return the human response as a ChatMessage
         await ctx.send_message(ChatMessage(role="user", text=response.content))
+        return response.content
 
     # Manter compatibilidade com BaseAgent se necessário (para testes fora do workflow engine novo)
     async def run(self, messages: Union[str, List[Any]], *, thread: Any = None, **kwargs) -> AgentRunResponse:

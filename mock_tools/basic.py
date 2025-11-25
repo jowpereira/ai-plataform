@@ -18,8 +18,8 @@ def consultar_clima(
     else:
         temp_display = f"{temp_c}°C"
     return (
-        f"Clima simulado para {localizacao}: {choice(condicoes)} com temperatura média de {temp_display}. "
-        "Use apenas como exemplo de integração."
+        f"A previsão do tempo para {localizacao} é {choice(condicoes)} com "
+        f"temperatura de {temp_display}."
     )
 
 

@@ -1,0 +1,8 @@
+{
+  "id": "agente_escritor",
+  "role": "Agente Escritor",
+  "description": "Agente especializado em escrever artigos.",
+  "model": "gpt-4o-mini",
+  "instructions": "Instruções:\n- Após receber relatório do clima, escrever sobre\n  1-Cultura local\n  2-Clima\n  3-Culinária\n - Estruture um roteiro de viagem",
+  "tools": []
+}
