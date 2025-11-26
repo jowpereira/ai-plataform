@@ -9,6 +9,19 @@ Este projeto implementa um worker genérico baseado no Microsoft Agent Framework
 - **Integração com Ferramentas**: Carregamento dinâmico de ferramentas Python.
 - **Suporte a Modelos**: OpenAI e Azure OpenAI.
 
+## Interface Visual (MAIA)
+
+O projeto inclui uma interface web moderna ("MAIA") para desenvolvimento e monitoramento de agentes.
+
+- **Agent Studio:** Editor visual de workflows.
+- **Workflow Builder:** Ferramenta para composição de grafos de execução.
+- **Identidade Visual:** Baseada no padrão corporativo Mapfre (Vermelho/Azul).
+
+Para iniciar a interface:
+```bash
+uv run run.py
+```
+
 ## Estrutura de Configuração
 
 O arquivo de configuração deve seguir o schema definido em `src/worker/config.py`.

@@ -73,6 +73,7 @@ Este documento rastrea o progresso detalhado do desenvolvimento do módulo worke
   - [x] Configurar build do frontend (Vite + React).
   - [x] Integrar servidor FastAPI ao `run.py`.
   - [x] Rebranding completo para "MAIA".
+  - [x] Landing Page v2 (Foco em "Internal Builder" e Casos de Uso Operacionais).
   - [x] Carregamento automático de exemplos do diretório `exemplos/`.
   - [x] Renomear módulo `src.devui` para `src.maia_ui`.
 

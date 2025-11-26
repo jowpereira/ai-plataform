@@ -2,6 +2,22 @@
 
 Todos os marcos notáveis deste projeto serão documentados neste arquivo.
 
+## [0.7.0] - 2025-11-25
+
+### Adicionado
+- **Landing Page v2:** Redesign completo focado na experiência do colaborador ("Internal Builder").
+- **Workflow Visualization:** Diagrama SVG interativo e complexo demonstrando padrões de Router, Sequential, Group Chat e Handoff.
+- **Use Cases:** Novos cenários operacionais detalhados (Auditoria de Calls, Triagem de Email, Investigação de Fraudes).
+- **Documentation:** Guia de identidade visual em `docs/rebranding/README.md`.
+
+### Alterado
+- **Rebranding (MAIA):**
+    - Paleta de cores atualizada para identidade corporativa Mapfre.
+    - Primária: Vermelho Corporativo (`#E6331A`).
+    - Acento: Azul Institucional (`#003366`).
+    - Gradientes e componentes UI ajustados para o novo esquema de cores.
+- **Frontend:** Atualização de variáveis CSS em `index.css` para suporte a OKLCH e novas cores.
+
 ## [0.6.0] - 2025-11-25
 
 ### Adicionado

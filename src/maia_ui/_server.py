@@ -1349,6 +1349,80 @@ class DevServer:
                 logger.error(f"Error listing tools: {e}")
                 raise HTTPException(status_code=500, detail=f"Failed to list tools: {e!s}") from e
 
+        @app.post("/v1/tools/{tool_id}/invoke")
+        async def invoke_tool(tool_id: str, raw_request: Request) -> dict[str, Any]:
+            """Invoke a discovered tool directly (dev-only helper).
+
+            Body: { arguments: <object|array|string> }
+            """
+            try:
+                body = await raw_request.json()
+            except Exception:
+                body = {}
+
+            args = body.get("arguments")
+
+            candidate_modules = ["mock_tools.basic", "ferramentas.basicas"]
+
+            target_func = None
+            func_module = None
+            for module_path in candidate_modules:
+                try:
+                    module = importlib.import_module(module_path)
+                except ImportError:
+                    continue
+
+                if hasattr(module, tool_id):
+                    target_func = getattr(module, tool_id)
+                    func_module = module_path
+                    break
+
+            if not target_func or not callable(target_func):
+                raise HTTPException(status_code=404, detail=f"Tool '{tool_id}' not found in known modules")
+
+            # Prepare invocation arguments
+            try:
+                if isinstance(args, str):
+                    # Try parse JSON
+                    import json as _json
+
+                    try:
+                        parsed = _json.loads(args)
+                    except Exception:
+                        parsed = args
+                else:
+                    parsed = args
+
+                # Decide if parsed is list -> positional args, dict -> kwargs
+                if isinstance(parsed, list):
+                    result = target_func(*parsed)
+                elif isinstance(parsed, dict):
+                    result = target_func(**parsed)
+                elif parsed is None:
+                    result = target_func()
+                else:
+                    # single primitive argument
+                    result = target_func(parsed)
+
+                # Normalize result for JSON
+                try:
+                    # If result is not JSON serializable, convert to string
+                    import json as _json
+
+                    _json.dumps(result)
+                    out = result
+                except Exception:
+                    out = str(result)
+
+                return {"success": True, "tool": tool_id, "module": func_module, "result": out}
+
+            except TypeError as e:
+                logger.error(f"Tool invocation failed (TypeError): {e}")
+                raise HTTPException(status_code=400, detail=f"Invalid arguments for tool {tool_id}: {e}") from e
+            except Exception as e:
+                logger.exception(f"Tool invocation error: {e}")
+                raise HTTPException(status_code=500, detail=f"Tool '{tool_id}' execution failed: {e}") from e
+
         @app.delete("/v1/entities/{entity_id}")
         async def delete_entity(entity_id: str) -> dict[str, str]:
             """Delete an entity."""

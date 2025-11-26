@@ -445,22 +445,49 @@ class EntityDiscovery:
         if entities_dir_str not in sys.path:
             sys.path.insert(0, entities_dir_str)
 
-        # Scan for directories and Python files WITHOUT importing
-        for item in entities_dir.iterdir():  # noqa: ASYNC240
-            print(f"DEBUG: Scanning item {item.name}")
-            if item.name.startswith(".") or item.name == "__pycache__":
-                continue
+        # Check if we have the structured folders 'agentes' and 'workflows'
+        has_structured_folders = (entities_dir / "agentes").exists() or (entities_dir / "workflows").exists()
 
-            if item.is_dir() and self._looks_like_entity(item):
-                # Directory-based entity - create sparse metadata
-                self._register_sparse_entity(item)
-            elif item.is_file() and item.suffix == ".py" and not item.name.startswith("_"):
-                # Single file entity - create sparse metadata
-                self._register_sparse_file_entity(item)
-            elif item.is_file() and item.suffix == ".json" and not item.name.startswith("_"):
-                # JSON configuration entity
-                print(f"DEBUG: Found JSON entity file {item.name}")
-                self._register_sparse_json_entity(item)
+        # Generic scan helper (also used by structured folders)
+        def _scan_dir(directory: Path, is_root: bool = False):
+            for item in directory.iterdir():  # noqa: ASYNC240
+                if item.name.startswith(".") or item.name == "__pycache__":
+                    continue
+
+                if item.is_dir():
+                    # Check if it's a structured folder (agentes/workflows)
+                    if item.name in ("agentes", "workflows"):
+                        # Recurse into organized folders
+                        scan_dir(item)
+                    elif self._looks_like_entity(item):
+                        # Directory-based entity - create sparse metadata
+                        self._register_sparse_entity(item)
+                elif item.is_file():
+                    # If we are in the root and have structured folders, IGNORE files in root
+                    # This prevents loading 'dag_complex.json' etc if user wants clean view
+                    if is_root and has_structured_folders:
+                        continue
+
+                    if item.suffix == ".py" and not item.name.startswith("_"):
+                        # Single file entity - create sparse metadata
+                        self._register_sparse_file_entity(item)
+                    elif item.suffix == ".json" and not item.name.startswith("_"):
+                        # JSON configuration entity
+                        self._register_sparse_json_entity(item)
+
+        agents_dir = entities_dir / "agentes"
+        workflows_dir = entities_dir / "workflows"
+
+        # If the repo contains structured folders, prioritize them exclusively
+        if has_structured_folders:
+            if agents_dir.exists():
+                _scan_dir(agents_dir)
+            if workflows_dir.exists():
+                _scan_dir(workflows_dir)
+            return
+
+        # Start scan from root (legacy mode)
+        _scan_dir(entities_dir, is_root=True)
 
     def _looks_like_entity(self, dir_path: Path) -> bool:
         """Check if directory contains an entity (without importing).
@@ -934,62 +961,84 @@ class EntityDiscovery:
     def _register_sparse_json_entity(self, file_path: Path) -> None:
         """Register entities defined in a JSON configuration file."""
         try:
-            # We need to parse the JSON to know what's inside
             import json
+
             with open(file_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
-            
-            # Check if it looks like a WorkerConfig
-            if "agents" in data or "workflow" in data:
-                # Register the workflow if present
-                if "workflow" in data:
-                    workflow_name = data.get("name", file_path.stem)
-                    # Use filename as ID to avoid conflicts if name is generic
-                    entity_id = workflow_name
-                    
+
+            # Worker/workflow config (full workflow definition)
+            if "workflow" in data:
+                workflow_name = data.get("name", file_path.stem)
+                entity_id = workflow_name
+
+                info = EntityInfo(
+                    id=entity_id,
+                    name=workflow_name,
+                    type="workflow",
+                    source="json_config",
+                    framework="agent_framework",
+                    metadata={"path": str(file_path), "config_type": "workflow"},
+                )
+                self._entities[entity_id] = info
+                logger.info(f"Discovered JSON workflow: {entity_id}")
+                return
+
+            # Multi-agent registry (list of agents)
+            if "agents" in data and isinstance(data["agents"], list):
+                for agent in data["agents"]:
+                    agent_id = agent.get("id")
+                    if not agent_id:
+                        continue
                     info = EntityInfo(
-                        id=entity_id,
-                        name=workflow_name,
-                        type="workflow",
+                        id=agent_id,
+                        name=agent.get("role", agent_id),
+                        type="agent",
                         source="json_config",
                         framework="agent_framework",
-                        metadata={"path": str(file_path), "config_type": "workflow"},
+                        metadata={
+                            "path": str(file_path),
+                            "config_type": "agent",
+                            "agent_id": agent_id,
+                        },
                     )
-                    self._entities[entity_id] = info
-                    logger.info(f"Discovered JSON workflow: {entity_id}")
+                    self._entities[agent_id] = info
+                    logger.info(f"Discovered JSON agent: {agent_id}")
+                return
 
-                # Register agents
-                if "agents" in data:
-                    for agent in data["agents"]:
-                        agent_id = agent.get("id")
-                        if agent_id:
-                            info = EntityInfo(
-                                id=agent_id,
-                                name=agent.get("role", agent_id),
-                                type="agent",
-                                source="json_config",
-                                framework="agent_framework",
-                                metadata={"path": str(file_path), "config_type": "agent", "agent_id": agent_id},
-                            )
-                            self._entities[agent_id] = info
-                            logger.info(f"Discovered JSON agent: {agent_id}")
-                            
+            # Single-agent file (id/role/instructions...)
+            if data.get("id") and (data.get("role") or data.get("name")):
+                agent_id = data["id"]
+                info = EntityInfo(
+                    id=agent_id,
+                    name=data.get("role") or data.get("name") or agent_id,
+                    type="agent",
+                    source="json_config",
+                    framework="agent_framework",
+                    metadata={"path": str(file_path), "config_type": "single_agent"},
+                )
+                self._entities[agent_id] = info
+                logger.info(f"Discovered single JSON agent: {agent_id}")
+                return
+
         except Exception as e:
             logger.warning(f"Failed to parse JSON entity file {file_path}: {e}")
 
     async def _load_json_entity(self, entity_id: str, entity_info: EntityInfo) -> Any:
         """Load entity from JSON configuration."""
+        config_type = entity_info.metadata.get("config_type")
+        file_path = Path(entity_info.metadata["path"])
+
+        if config_type == "single_agent":
+            return await self._load_single_agent_entity(file_path, entity_id)
+
         from src.worker.config import ConfigLoader
         from src.worker.engine import WorkflowEngine
         
-        file_path = entity_info.metadata["path"]
-        loader = ConfigLoader(file_path)
+        loader = ConfigLoader(str(file_path))
         config = loader.load()
         
         # Initialize engine to load agents and build workflow
         engine = WorkflowEngine(config)
-        
-        config_type = entity_info.metadata.get("config_type")
         
         if config_type == "workflow":
             # Build the workflow
@@ -1029,6 +1078,149 @@ class EntityDiscovery:
             return agent
             
         raise ValueError(f"Unknown config type: {config_type}")
+
+    async def _load_single_agent_entity(self, file_path: Path, entity_id: str) -> Any:
+        """Carrega um agente unitário usando o WorkflowEngine como core declarativo.
+        
+        O Worker é o cerne de toda execução na plataforma. Mesmo agentes unitários
+        são encapsulados em um workflow sequencial de um único passo para garantir
+        consistência no processamento e acesso a todas as funcionalidades do engine.
+        
+        Args:
+            file_path: Caminho do arquivo JSON do agente
+            entity_id: Identificador da entidade
+            
+        Returns:
+            Workflow construído pelo WorkflowEngine contendo o agente
+        """
+        import json
+
+        from src.worker.config import (
+            AgentConfig,
+            ModelConfig,
+            ResourcesConfig,
+            ToolConfig,
+            WorkerConfig,
+            WorkflowConfig,
+            WorkflowStep,
+        )
+        from src.worker.engine import WorkflowEngine
+
+        if not file_path.exists():
+            raise FileNotFoundError(f"Config de agente não encontrada: {file_path}")
+
+        with open(file_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+
+        agent_id = data.get("id") or entity_id
+        model_id = data.get("model")
+        if not model_id:
+            raise ValueError(f"Agente {agent_id} precisa do campo obrigatório 'model'.")
+
+        role = data.get("role") or agent_id
+        description = data.get("description")
+        instructions = data.get("instructions", "")
+
+        # Detectar tipo de modelo: se não especificado, usar azure-openai (padrão do projeto)
+        model_type = data.get("model_type", "azure-openai")
+        if model_type not in {"openai", "azure-openai"}:
+            model_type = "azure-openai"
+
+        deployment_name = data.get("deployment") or model_id
+
+        # Resolver ferramentas declaradas
+        resolved_tools: dict[str, ToolConfig] = {}
+        valid_tool_ids: list[str] = []
+        for tool_id in data.get("tools", []):
+            tool_config = self._resolve_tool_config(tool_id)
+            if tool_config:
+                resolved_tools[tool_id] = tool_config
+                valid_tool_ids.append(tool_id)
+                logger.info(f"✅ Ferramenta '{tool_id}' resolvida para agente {agent_id}")
+            else:
+                logger.warning(
+                    "⚠️ Ferramenta '%s' não encontrada nas bibliotecas padrão. Removendo do agente %s.",
+                    tool_id,
+                    agent_id,
+                )
+
+        # Construir configuração completa do Worker
+        worker_config = WorkerConfig(
+            name=role,
+            resources=ResourcesConfig(
+                models={model_id: ModelConfig(type=model_type, deployment=deployment_name)},
+                tools=list(resolved_tools.values()),
+            ),
+            agents=[
+                AgentConfig(
+                    id=agent_id,
+                    role=role,
+                    description=description,
+                    model=model_id,
+                    instructions=instructions,
+                    tools=valid_tool_ids,
+                )
+            ],
+            workflow=WorkflowConfig(
+                type="sequential",
+                steps=[
+                    WorkflowStep(
+                        id=f"{agent_id}_step",
+                        type="agent",
+                        agent=agent_id,
+                        input_template="{{user_input}}",
+                    )
+                ],
+            ),
+        )
+
+        # Usar WorkflowEngine como core de execução
+        engine = WorkflowEngine(worker_config)
+        engine.build()
+        
+        if not engine._workflow:
+            raise RuntimeError(f"Falha ao construir workflow para agente {agent_id}")
+        
+        # Configurar metadados do workflow
+        engine._workflow.id = entity_id
+        engine._workflow.name = role
+        
+        # Anexar configuração original para frontend/debug
+        full_config = {
+            "workflow": worker_config.workflow.model_dump(),
+            "resources": worker_config.resources.model_dump(),
+            "agents": [a.model_dump() for a in worker_config.agents],
+        }
+        setattr(engine._workflow, "_source_config", full_config)
+        
+        logger.info(f"🚀 Agente unitário '{agent_id}' carregado via WorkflowEngine (tools: {valid_tool_ids})")
+        
+        return engine._workflow
+
+    def _resolve_tool_config(self, tool_id: str) -> Any:
+        from src.worker.config import ToolConfig
+
+        candidate_modules = [
+            ("mock_tools.basic", "Ferramentas de demonstração"),
+            ("ferramentas.basicas", "Ferramentas locais"),
+        ]
+
+        for module_path, description in candidate_modules:
+            try:
+                module = importlib.import_module(module_path)
+            except ImportError:
+                continue
+
+            if hasattr(module, tool_id):
+                doc = getattr(getattr(module, tool_id), "__doc__", "") or description
+                summary = doc.strip().split("\n")[0] if doc else description
+                return ToolConfig(
+                    id=tool_id,
+                    path=f"{module_path}:{tool_id}",
+                    description=summary,
+                )
+
+        return None
 
     def _generate_entity_id(self, entity: Any, entity_type: str, source: str = "directory") -> str:
         """Generate unique entity ID with UUID suffix for collision resistance.

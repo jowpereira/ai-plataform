@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "name": "New Agent",
+  "name": "Sequencial Agent",
   "resources": {
     "models": {
       "gpt-4o-mini": {
@@ -34,6 +34,14 @@
       "tools": [
         "consultar_clima"
       ]
+    },
+    {
+      "id": "agente_conversacional",
+      "role": "Agente Conversacional",
+      "description": "",
+      "model": "gpt-4o-mini",
+      "instructions": "You are a helpful assistant.",
+      "tools": []
     }
   ],
   "workflow": {
@@ -50,8 +58,15 @@
         "type": "agent",
         "agent": "agente_escritor",
         "input_template": "{{previous_output}}"
+      },
+      {
+        "id": "step_1764119713414",
+        "type": "agent",
+        "agent": "agente_conversacional",
+        "input_template": "{{previous_output}}"
       }
     ],
     "start_step": "step_1764098349053"
-  }
+  },
+  "_file": "sequencial_agent.json"
 }

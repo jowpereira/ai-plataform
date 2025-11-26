@@ -56,6 +56,7 @@
     "manager_model": "gpt-4o-mini",
     "manager_instructions": "Você gerencia uma equipe de planejamento de viagens.\nSequência:\n1. O usuário pede uma viagem.\n2. Você seleciona 'agente_pesquisador' para obter o clima.\n3. Assim que o clima for conhecido, você seleciona 'agente_escritor'.\n4. Se 'agente_escritor' disser TERMINATE, você finaliza.",
     "max_rounds": 10,
-    "termination_condition": "TERMINATE"
-  }
+    "termination_condition": ""
+  },
+  "_file": "flow_001.json"
 }

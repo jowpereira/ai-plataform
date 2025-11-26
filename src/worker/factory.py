@@ -68,10 +68,9 @@ class AgentFactory:
         if model_config.type == "openai":
             return OpenAIChatClient(model_id=model_config.deployment)
         elif model_config.type == "azure-openai":
-            return AzureOpenAIChatClient(
-                credential=AzureCliCredential(),
-                deployment_name=model_config.deployment
-            )
+            # AzureOpenAIChatClient usa env vars automaticamente (AZURE_OPENAI_API_KEY, AZURE_OPENAI_ENDPOINT)
+            # Não precisa de credential explícito
+            return AzureOpenAIChatClient(deployment_name=model_config.deployment)
         else:
             raise ValueError(f"Tipo de modelo não suportado: {model_config.type}")
 

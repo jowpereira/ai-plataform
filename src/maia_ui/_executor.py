@@ -219,10 +219,18 @@ class AgentFrameworkExecutor:
 
             # Use simplified trace capture
             with capture_traces(session_id=session_id, entity_id=entity_id) as trace_collector:
-                if entity_info.type == "agent":
-                    async for event in self._execute_agent(entity_obj, request, trace_collector):
-                        yield event
-                elif entity_info.type == "workflow":
+                # Detectar tipo real do objeto carregado
+                # O Worker sempre retorna Workflow, mesmo para agentes unitários
+                # Isso garante processamento consistente via WorkflowEngine
+                # Workflow tem: run_stream, executors, edge_groups (atributos típicos)
+                is_workflow = (
+                    hasattr(entity_obj, "run_stream") 
+                    and hasattr(entity_obj, "executors") 
+                    and hasattr(entity_obj, "edge_groups")
+                )
+                
+                if is_workflow or entity_info.type == "workflow":
+                    logger.info(f"🔄 Processando via WorkflowEngine: {entity_id}")
                     async for event in self._execute_workflow(entity_obj, request, trace_collector):
                         # Log RequestInfoEvent for debugging HIL flow
                         event_class = event.__class__.__name__ if hasattr(event, "__class__") else type(event).__name__
@@ -233,6 +241,11 @@ class AgentFrameworkExecutor:
                             logger.info(f"   request_type: {getattr(event, 'request_type', 'N/A')}")
                             data = getattr(event, "data", None)
                             logger.info(f"   data type: {type(data).__name__ if data else 'None'}")
+                        yield event
+                elif entity_info.type == "agent":
+                    # Fallback para agentes legados não-Worker (se houver)
+                    logger.info(f"⚠️ Executando agente legado (não-Worker): {entity_id}")
+                    async for event in self._execute_agent(entity_obj, request, trace_collector):
                         yield event
                 else:
                     raise ValueError(f"Unsupported entity type: {entity_info.type}")
