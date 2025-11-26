@@ -568,15 +568,15 @@ export function SettingsModal({
                   <Info className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
                   <div className="space-y-1">
                     <p>
-                      Requests route through{" "}
+                      As requisições passam por{" "}
                       <span className="font-mono font-semibold">
                         {backendUrl}
                       </span>{" "}
-                      to OpenAI API. Server must have{" "}
+                      para a API OpenAI. O servidor deve ter{" "}
                       <span className="font-mono font-semibold">
                         OPENAI_API_KEY
                       </span>{" "}
-                      configured.
+                      configurado.
                     </p>
                   </div>
                 </div>
@@ -585,9 +585,17 @@ export function SettingsModal({
           )}
 
           {activeTab === "about" && (
-            <div className="space-y-4 pt-4">
-              <p className="text-sm text-muted-foreground">
-                MAIA is a sample app for getting started with Agent Framework.
+            <div className="space-y-5 pt-4">
+              {/* Slogan */}
+              <div className="text-center py-3 bg-primary/5 rounded-lg">
+                <p className="text-sm font-medium text-primary italic">
+                  "Inteligência que antecipa. Proteção que evolui."
+                </p>
+              </div>
+
+              <p className="text-sm text-muted-foreground text-center">
+                Plataforma de agentes inteligentes baseada no Microsoft Agent Framework.
+                A MAIA oferece soluções de IA confiáveis, inovadoras e empáticas.
               </p>
 
               <div className="flex justify-center pt-2">
@@ -600,12 +608,17 @@ export function SettingsModal({
                       "_blank"
                     )
                   }
-                  className="text-xs"
+                  className="text-xs border-primary/30 hover:bg-primary/5"
                 >
                   <ExternalLink className="h-3 w-3 mr-1" />
-                  Learn More about Agent Framework
+                  Saiba mais sobre o Agent Framework
                 </Button>
               </div>
+
+              {/* Tag final */}
+              <p className="text-center text-xs text-accent font-medium">
+                A inteligência que cuida.
+              </p>
             </div>
           )}
         </div>
