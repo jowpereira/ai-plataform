@@ -105,6 +105,11 @@ def run(
         "--dev",
         help="Inicia o servidor MAIA com todos os exemplos (Ignora --config e --input)",
     ),
+    stream: bool = typer.Option(
+        True,
+        "--stream/--no-stream",
+        help="Usa streaming (ainvoke) ou execução direta (invoke). Streaming mostra respostas de cada agente.",
+    ),
 ):
     """
     Executa o worker genérico.
@@ -172,7 +177,10 @@ def run(
 
         try:
             engine = WorkflowEngine(config)
-            result = await engine.run(initial_input=input_text)
+            if stream:
+                result = await engine.ainvoke(initial_input=input_text)
+            else:
+                result = await engine.invoke(initial_input=input_text)
             
         except Exception as e:
             print(f"\n❌ Erro de Execução: {e}")

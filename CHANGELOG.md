@@ -2,6 +2,49 @@
 
 Todos os marcos notáveis deste projeto serão documentados neste arquivo.
 
+## [0.15.1] - 2025-11-27
+
+### Correção de Bug - Exibição do Magentic e Captura de Eventos
+
+#### Corrigido
+- **WorkflowEngine (`src/worker/engine.py`)**:
+  - Corrigido comparação de `Role` enum vs string no processamento de `WorkflowOutputEvent`.
+  - Agora usa `str(role) == 'assistant'` para compatibilidade com enum `agent_framework._types.Role`.
+  - Respostas de cada agente são emitidas corretamente via `AGENT_RESPONSE`.
+  - Eventos `AGENT_START` emitidos apenas uma vez por agente (sem duplicação).
+  - Removido método helper `run()` - APIs públicas são apenas `invoke()` e `ainvoke()`.
+
+- **EventMiddleware (`src/worker/middleware/__init__.py`)**:
+  - Desabilitado emissão de eventos duplicados (controlado agora pelo engine).
+  - Mantido apenas como pass-through para não interferir no fluxo.
+  - Método `_extract_content()` preservado para uso futuro.
+
+- **CLI (`run.py`)**:
+  - Adicionada opção `--stream/--no-stream` para escolher modo de execução.
+  - `--stream` (padrão): Usa `ainvoke()` com streaming e eventos em tempo real.
+  - `--no-stream`: Usa `invoke()` para execução direta sem streaming.
+
+- **ConsoleReporter (`src/worker/reporters/console.py`)**:
+  - Método `_is_stream_placeholder()` para detectar placeholders de streaming.
+  - Suprime exibição de respostas inválidas.
+
+#### Técnico
+- Tipos de eventos do framework identificados:
+  - `AgentRunUpdateEvent`: Streaming com `executor_id` e `data.text` (delta).
+  - `WorkflowOutputEvent`: Lista de `ChatMessage` com resultado completo.
+  - `ExecutorCompletedEvent`: Marcador de conclusão de executor.
+- `WorkflowOutputEvent.data` contém lista de `ChatMessage` com atributos:
+  - `role`: Enum `Role.user` ou `Role.assistant`
+  - `author_name`: Nome do agente (ex: `agente_pesquisador`)
+  - `text`: Conteúdo completo da mensagem
+
+#### Impacto
+- Workflows agora exibem corretamente todas as respostas dos agentes.
+- Console mostra painéis individuais para cada agente.
+- Resultado final exibido corretamente no painel "Workflow Concluído".
+
+---
+
 ## [0.15.0] - 2025-11-27
 
 ### Worker SDK - Alinhamento Total com Microsoft Agent Framework (Fase 7.12)

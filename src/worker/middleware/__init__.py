@@ -1,49 +1,70 @@
 from typing import Any, Callable, Awaitable
+from inspect import isasyncgen, isgenerator
 from agent_framework import AgentMiddleware, AgentRunContext, ChatMessage
 
 class EventMiddleware(AgentMiddleware):
-    """Middleware para emitir eventos de execução do agente."""
+    """
+    Middleware para emitir eventos de execução do agente.
     
-    def __init__(self, agent_name: str):
+    NOTA: Eventos de agente agora são controlados pelo WorkflowEngine
+    para capturar conteúdo completo do WorkflowOutputEvent.
+    Este middleware foi desabilitado para evitar duplicação.
+    """
+    
+    def __init__(self, agent_name: str, emit_events: bool = False):
         self.agent_name = agent_name
+        self.emit_events = emit_events  # Desabilitado por padrão
         
     async def process(self, context: AgentRunContext, next: Callable[[AgentRunContext], Awaitable[None]]) -> None:
-        from src.worker.events import get_event_bus, WorkerEventType
-        bus = get_event_bus()
+        # Eventos agora são controlados pelo engine via run_stream()
+        # Este middleware apenas executa o próximo handler
+        await next(context)
+    
+    def _extract_content(self, result: Any) -> str:
+        """
+        Extrai conteúdo de diferentes tipos de resultado.
         
-        # Emitir evento de início
-        bus.emit_simple(
-            WorkerEventType.AGENT_START, 
-            {"agent_name": self.agent_name}
-        )
+        Trata corretamente:
+        - Strings
+        - Objetos com atributos text/content
+        - Listas de mensagens
+        - AsyncGenerators/Generators (retorna placeholder)
+        """
+        if result is None:
+            return "Completed"
         
-        try:
-            await next(context)
-            
-            # Tentar capturar resultado se disponível no context
-            # Nota: Depende da implementação do AgentRunContext no framework
-            result = getattr(context, "result", None)
-            content = "Completed"
-            
-            if result:
-                if hasattr(result, "text"):
-                    content = result.text
-                elif hasattr(result, "content"):
-                    content = result.content
-                else:
-                    content = str(result)
-            
-            bus.emit_simple(
-                WorkerEventType.AGENT_RESPONSE, 
-                {"agent_name": self.agent_name, "content": content}
-            )
-            
-        except Exception as e:
-            bus.emit_simple(
-                WorkerEventType.WORKFLOW_ERROR,
-                {"agent_name": self.agent_name, "error": str(e)}
-            )
-            raise e
+        # Verificar se é um generator/async generator (stream)
+        # Não consumimos streams aqui - apenas indicamos que é streaming
+        if isasyncgen(result) or isgenerator(result):
+            return "[Streaming response...]"
+        
+        # String direta
+        if isinstance(result, str):
+            return result
+        
+        # Objeto com text/content
+        if hasattr(result, "text") and result.text:
+            return str(result.text)
+        if hasattr(result, "content") and result.content:
+            return str(result.content)
+        
+        # Lista de mensagens
+        if isinstance(result, list) and result:
+            last_msg = result[-1]
+            if hasattr(last_msg, "text") and last_msg.text:
+                return str(last_msg.text)
+            if hasattr(last_msg, "content") and last_msg.content:
+                return str(last_msg.content)
+            return str(last_msg)
+        
+        # Fallback
+        result_str = str(result)
+        
+        # Detectar representação de async_generator
+        if "async_generator" in result_str or "generator object" in result_str:
+            return "[Streaming response...]"
+        
+        return result_str
 
 
 class EnhancedTemplateMiddleware(AgentMiddleware):

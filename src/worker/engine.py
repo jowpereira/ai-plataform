@@ -4,7 +4,7 @@ import os
 import uuid
 from typing import Any, Dict, Optional, List
 
-from agent_framework import Workflow, ChatAgent, ChatMessage, ExecutorCompletedEvent, AgentRunEvent
+from agent_framework import Workflow, ChatAgent, ChatMessage
 
 from src.worker.config import WorkerConfig
 from src.worker.factory import AgentFactory
@@ -30,20 +30,11 @@ class WorkflowEngine:
         self._event_bus = event_bus or get_event_bus()
         self._strategy_registry = get_strategy_registry()
         self.state_manager: Optional[WorkflowStateManager] = None
-        self._last_agent_response: Optional[str] = None  # Captura última resposta via eventos
-        self._response_subscription_id: Optional[str] = None
 
     @property
     def event_bus(self) -> SimpleEventBus:
         """Retorna o EventBus para inscrição de hooks externos."""
         return self._event_bus
-    
-    def _capture_agent_response(self, event: Any) -> None:
-        """Callback para capturar a última resposta de agente."""
-        if hasattr(event, 'type') and event.type == WorkerEventType.AGENT_RESPONSE:
-            content = event.data.get("content", "")
-            if content and content != "Completed":
-                self._last_agent_response = content
 
     def _emit(self, event_type: WorkerEventType, data: Optional[Dict[str, Any]] = None) -> None:
         """Emite evento se o bus estiver configurado."""
@@ -138,8 +129,19 @@ class WorkflowEngine:
             "agent_count": len(ordered_agents)
         })
 
-    async def run(self, initial_input: str) -> Any:
-        """Executa o workflow usando o motor nativo."""
+    async def invoke(self, initial_input: str) -> Any:
+        """
+        Executa o workflow de forma simples (sem streaming de eventos).
+        
+        Usa workflow.run() diretamente, mais eficiente para casos
+        onde não é necessário capturar eventos intermediários.
+        
+        Args:
+            initial_input: Texto de entrada para o workflow
+            
+        Returns:
+            Resultado final do workflow
+        """
         if not self._workflow:
             self.setup()
             
@@ -149,19 +151,13 @@ class WorkflowEngine:
         self.state_manager.set_status("running")
         self._emit(WorkerEventType.WORKFLOW_START, {"input": initial_input[:100]})
         
-        # Registrar captura de respostas via EventBus
-        self._last_agent_response = None
-        self._response_subscription_id = self._event_bus.subscribe(
-            WorkerEventType.AGENT_RESPONSE, 
-            self._capture_agent_response
-        )
-        
         try:
-            # Executar workflow
+            # Executar workflow diretamente
             result = await self._workflow.run(message=initial_input)
             
             # Processar resultado
             outputs = result.get_outputs()
+            final_result = None
             
             if outputs:
                 # Normalizar outputs para uma lista plana de mensagens
@@ -172,44 +168,93 @@ class WorkflowEngine:
                     else:
                         all_messages.append(item)
 
-                # Retornar o texto da última mensagem válida
+                # Retornar o texto da última mensagem de assistant
                 if all_messages:
-                    last_msg = all_messages[-1]
-                    final_result = getattr(last_msg, 'text', None) or getattr(last_msg, 'content', None) or str(last_msg)
-                    self._emit(WorkerEventType.WORKFLOW_COMPLETE, {"result": str(final_result)})
-                    self.state_manager.set_status("completed")
-                    return final_result
+                    for msg in reversed(all_messages):
+                        # Role pode ser enum (Role.assistant) ou string
+                        role = getattr(msg, 'role', None)
+                        if str(role) == 'assistant':
+                            text = getattr(msg, 'text', None) or getattr(msg, 'content', None)
+                            if text:
+                                final_result = str(text)
+                                break
             
-            # Fallback 1: Usar última resposta capturada pelo EventBus
-            if self._last_agent_response:
-                self._emit(WorkerEventType.WORKFLOW_COMPLETE, {"result": str(self._last_agent_response)})
+            if final_result:
+                self._emit(WorkerEventType.WORKFLOW_COMPLETE, {"result": str(final_result)})
                 self.state_manager.set_status("completed")
-                return self._last_agent_response
+                return str(final_result)
             
-            # Fallback 2: Inspecionar eventos do resultado se não houver outputs explícitos
+            self._emit(WorkerEventType.WORKFLOW_COMPLETE, {"result": ""})
+            self.state_manager.set_status("completed")
+            return "Nenhum output gerado pelo workflow."
+            
+        except Exception as e:
+            self.state_manager.set_status("failed")
+            self._emit(WorkerEventType.WORKFLOW_ERROR, {"error": str(e)})
+            raise
+        finally:
+            self.teardown()
+
+    async def ainvoke(self, initial_input: str) -> Any:
+        """
+        Executa o workflow com streaming de eventos.
+        
+        Usa workflow.run_stream() para capturar eventos em tempo real,
+        emitindo AGENT_START para cada agente durante execução e
+        AGENT_RESPONSE com conteúdo completo ao final.
+        
+        Args:
+            initial_input: Texto de entrada para o workflow
+            
+        Returns:
+            Resultado final do workflow
+        """
+        if not self._workflow:
+            self.setup()
+            
+        if not self._workflow or not self.state_manager:
+            raise RuntimeError("Failed to build workflow or initialize state.")
+
+        self.state_manager.set_status("running")
+        self._emit(WorkerEventType.WORKFLOW_START, {"input": initial_input[:100]})
+        
+        try:
             last_response = None
+            current_agent = None
+            agents_seen: set[str] = set()  # Agentes já notificados
             
-            for event in result:
-                if isinstance(event, AgentRunEvent):
-                    if hasattr(event, "data"):
-                        data = event.data
-                        if hasattr(data, "value") and getattr(data, "value", None):
-                            last_response = getattr(data, "value")
-                        elif hasattr(data, "messages") and getattr(data, "messages", None):
-                            msgs = getattr(data, "messages")
-                            if isinstance(msgs, list) and msgs:
-                                last_msg = msgs[-1]
-                                if hasattr(last_msg, "text"):
-                                    last_response = getattr(last_msg, "text")
-                                elif hasattr(last_msg, "content"):
-                                    last_response = str(getattr(last_msg, "content"))
-                                else:
-                                    last_response = str(last_msg)
-                            elif isinstance(msgs, str):
-                                last_response = msgs
-                        else:
-                            last_response = str(data)
+            async for event in self._workflow.run_stream(message=initial_input):
+                event_type = type(event).__name__
+                
+                # AgentRunUpdateEvent: Notifica que agente está ativo (streaming)
+                if event_type == "AgentRunUpdateEvent":
+                    agent_name = getattr(event, 'executor_id', 'unknown')
+                    
+                    # Emitir AGENT_START apenas uma vez por agente
+                    if agent_name not in agents_seen and not agent_name.startswith(("to-conversation", "input-")):
+                        agents_seen.add(agent_name)
+                        current_agent = agent_name
+                        self._emit(WorkerEventType.AGENT_START, {"agent_name": agent_name})
+                
+                # WorkflowOutputEvent: Mensagens completas - emitir resposta de cada agente
+                elif event_type == "WorkflowOutputEvent":
+                    data = getattr(event, 'data', None)
+                    if data and isinstance(data, list):
+                        # Emitir AGENT_RESPONSE para cada mensagem de assistant
+                        for msg in data:
+                            # Role pode ser enum (Role.assistant) ou string
+                            role = getattr(msg, 'role', None)
+                            if str(role) == 'assistant':
+                                text = getattr(msg, 'text', None)
+                                author = getattr(msg, 'author_name', None)
+                                if text and author:
+                                    last_response = text
+                                    self._emit(
+                                        WorkerEventType.AGENT_RESPONSE, 
+                                        {"agent_name": author, "content": text}
+                                    )
             
+            # Retornar resultado
             if last_response:
                 self._emit(WorkerEventType.WORKFLOW_COMPLETE, {"result": str(last_response)})
                 self.state_manager.set_status("completed")
@@ -224,7 +269,63 @@ class WorkflowEngine:
             self._emit(WorkerEventType.WORKFLOW_ERROR, {"error": str(e)})
             raise
         finally:
-            # Limpar subscription
-            if self._response_subscription_id:
-                self._event_bus.unsubscribe(self._response_subscription_id)
             self.teardown()
+    
+    def _extract_event_content(self, data: Any) -> Optional[str]:
+        """Extrai conteúdo textual de dados de evento."""
+        if data is None:
+            return None
+        
+        # String direta
+        if isinstance(data, str):
+            return data if data.strip() else None
+        
+        # Objeto com value
+        if hasattr(data, "value") and data.value:
+            return str(data.value)
+        
+        # Objeto com messages
+        if hasattr(data, "messages") and data.messages:
+            msgs = data.messages
+            if isinstance(msgs, list) and msgs:
+                last_msg = msgs[-1]
+                if hasattr(last_msg, "text") and last_msg.text:
+                    return str(last_msg.text)
+                if hasattr(last_msg, "content") and last_msg.content:
+                    return str(last_msg.content)
+                return str(last_msg)
+            elif isinstance(msgs, str):
+                return msgs
+        
+        # Objeto com text/content direto
+        if hasattr(data, "text") and data.text:
+            return str(data.text)
+        if hasattr(data, "content") and data.content:
+            return str(data.content)
+        
+        # Lista de mensagens
+        if isinstance(data, list) and data:
+            last_item = data[-1]
+            if hasattr(last_item, "text") and last_item.text:
+                return str(last_item.text)
+            if hasattr(last_item, "content") and last_item.content:
+                return str(last_item.content)
+            return str(last_item)
+        
+        return None
+    
+    def _is_stream_placeholder(self, content: str) -> bool:
+        """Verifica se o conteúdo é um placeholder de streaming."""
+        if not content:
+            return True
+        
+        placeholders = [
+            "[Streaming response...]",
+            "async_generator object",
+            "generator object",
+            "<async_generator",
+            "<generator",
+            "Completed",
+        ]
+        
+        return any(p in content for p in placeholders)

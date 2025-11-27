@@ -52,6 +52,30 @@ class ConsoleReporter:
         self._status: Optional[Any] = None
         self._current_step: Optional[str] = None
     
+    def _is_stream_placeholder(self, content: Any) -> bool:
+        """
+        Detecta se o conteúdo é um placeholder de streaming ou um async_generator.
+        
+        Retorna True para:
+        - "[Streaming response...]"
+        - "<async_generator object ...>"
+        - "<generator object ...>"
+        """
+        if not content:
+            return False
+        
+        content_str = str(content)
+        
+        stream_indicators = [
+            "[Streaming response...]",
+            "async_generator object",
+            "generator object",
+            "<async_generator",
+            "<generator",
+        ]
+        
+        return any(indicator in content_str for indicator in stream_indicators)
+    
     def handle_event(self, event: WorkerEvent) -> None:
         """Callback principal para eventos."""
         try:
@@ -82,6 +106,11 @@ class ConsoleReporter:
         elif event.type == WorkerEventType.AGENT_RESPONSE:
             agent_name = data.get("agent_name", "unknown")
             content = data.get("content", "")
+            
+            # Detectar e tratar respostas de streaming
+            if self._is_stream_placeholder(content):
+                # Não exibir placeholder de streaming - o resultado final será mostrado
+                return
             
             # Tentar formatar JSON se parecer JSON
             if isinstance(content, (dict, list)):
