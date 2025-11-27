@@ -1,0 +1,62 @@
+{
+  "version": "1.0",
+  "name": "Pipeline de Análise de Sinistro",
+  "resources": {
+    "models": {
+      "gpt-4o-mini": {
+        "type": "azure-openai",
+        "deployment": "gpt-4o-mini"
+      }
+    },
+    "tools": []
+  },
+  "agents": [
+    {
+      "id": "extrator",
+      "role": "Extrator de Dados",
+      "description": "Extrai informações estruturadas do relato do sinistro.",
+      "model": "gpt-4o-mini",
+      "instructions": "Você extrai dados de relatos de sinistros.\n\nExtraia e retorne em JSON:\n- data_sinistro\n- tipo_sinistro (colisão, roubo, incêndio, etc)\n- valor_estimado\n- terceiros_envolvidos (sim/não)\n- resumo_ocorrencia\n\nApenas extraia, não analise.",
+      "tools": []
+    },
+    {
+      "id": "analista",
+      "role": "Analista de Sinistros",
+      "description": "Analisa a procedência e risco do sinistro.",
+      "model": "gpt-4o-mini",
+      "instructions": "Você é analista de sinistros.\n\nCom base nos dados extraídos:\n1. Verifique consistência das informações\n2. Classifique risco de fraude: BAIXO, MÉDIO, ALTO\n3. Identifique pontos de atenção\n4. Recomende: APROVAR, INVESTIGAR ou NEGAR\n\nJustifique cada conclusão.",
+      "tools": []
+    },
+    {
+      "id": "resumidor",
+      "role": "Resumidor Executivo",
+      "description": "Cria parecer final para o gestor.",
+      "model": "gpt-4o-mini",
+      "instructions": "Você cria pareceres executivos.\n\nFormate assim:\n## PARECER DE SINISTRO\n- **Número**: [gerar ID]\n- **Recomendação**: [APROVAR/INVESTIGAR/NEGAR]\n- **Risco de Fraude**: [nível]\n- **Resumo**: [2 linhas]\n- **Próximos Passos**: [lista]\n\nTERMINE com: PARECER FINALIZADO",
+      "tools": []
+    }
+  ],
+  "workflow": {
+    "type": "sequential",
+    "steps": [
+      {
+        "id": "step_extracao",
+        "type": "agent",
+        "agent": "extrator",
+        "input_template": "Extraia os dados deste relato de sinistro:\n\n{{ input }}"
+      },
+      {
+        "id": "step_analise",
+        "type": "agent",
+        "agent": "analista",
+        "input_template": "Analise os dados extraídos:\n\n{{ step_extracao }}"
+      },
+      {
+        "id": "step_parecer",
+        "type": "agent",
+        "agent": "resumidor",
+        "input_template": "Crie o parecer final baseado na análise:\n\n{{ step_analise }}"
+      }
+    ]
+  }
+}

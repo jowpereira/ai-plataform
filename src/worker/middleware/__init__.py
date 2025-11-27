@@ -1,6 +1,51 @@
 from typing import Any, Callable, Awaitable
 from agent_framework import AgentMiddleware, AgentRunContext, ChatMessage
 
+class EventMiddleware(AgentMiddleware):
+    """Middleware para emitir eventos de execução do agente."""
+    
+    def __init__(self, agent_name: str):
+        self.agent_name = agent_name
+        
+    async def process(self, context: AgentRunContext, next: Callable[[AgentRunContext], Awaitable[None]]) -> None:
+        from src.worker.events import get_event_bus, WorkerEventType
+        bus = get_event_bus()
+        
+        # Emitir evento de início
+        bus.emit_simple(
+            WorkerEventType.AGENT_START, 
+            {"agent_name": self.agent_name}
+        )
+        
+        try:
+            await next(context)
+            
+            # Tentar capturar resultado se disponível no context
+            # Nota: Depende da implementação do AgentRunContext no framework
+            result = getattr(context, "result", None)
+            content = "Completed"
+            
+            if result:
+                if hasattr(result, "text"):
+                    content = result.text
+                elif hasattr(result, "content"):
+                    content = result.content
+                else:
+                    content = str(result)
+            
+            bus.emit_simple(
+                WorkerEventType.AGENT_RESPONSE, 
+                {"agent_name": self.agent_name, "content": content}
+            )
+            
+        except Exception as e:
+            bus.emit_simple(
+                WorkerEventType.WORKFLOW_ERROR,
+                {"agent_name": self.agent_name, "error": str(e)}
+            )
+            raise e
+
+
 class EnhancedTemplateMiddleware(AgentMiddleware):
     def __init__(self, template: str):
         self.template = template

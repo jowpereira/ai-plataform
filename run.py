@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 import sys
 from pathlib import Path
@@ -20,8 +21,9 @@ PROJECT_ROOT = Path(__file__).resolve().parents[0]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.worker.config import ConfigLoader
+from src.worker.config import ConfigLoader, StandaloneAgentConfig, WorkerConfig
 from src.worker.engine import WorkflowEngine
+from src.worker.runner import AgentRunner
 
 app = typer.Typer(add_completion=False, help="Executor genérico para workers do Microsoft Agent Framework.")
 
@@ -89,13 +91,13 @@ def run(
         "exemplos/sequential.json",
         "--config",
         "-c",
-        help="Caminho para o arquivo de configuração do worker (Modo CLI)",
+        help="Caminho para o arquivo de configuração (workflow ou agente)",
     ),
     input_text: str = typer.Option(
         "Londres",
         "--input",
         "-i",
-        help="Input inicial para o workflow (Modo CLI)",
+        help="Input inicial para o workflow ou agente",
     ),
     dev_ui: bool = typer.Option(
         False,
@@ -107,8 +109,12 @@ def run(
     """
     Executa o worker genérico.
     
-    Modo CLI (padrão): Executa um workflow específico com input via terminal.
+    Modo CLI (padrão): Executa um workflow ou agente específico com input via terminal.
     Modo UI (--ui): Inicia o servidor MAIA para visualização e debug.
+    
+    Detecção automática:
+    - Arquivos com 'workflow' e 'resources' → executados como workflow
+    - Arquivos com 'model' e 'instructions' → executados como agente standalone
     """
     # Carregar variáveis de ambiente
     load_dotenv()
@@ -141,28 +147,32 @@ def run(
     # Resolver caminho absoluto
     abs_config_path = os.path.abspath(config_path)
     
-    print(f"Carregando configuração de: {abs_config_path}")
-    
     try:
         loader = ConfigLoader(abs_config_path)
-        config = loader.load()
-        print(f"✅ Configuração '{config.name}' carregada com sucesso.")
+        config_type = loader.detect_config_type()
+        
+        print(f"📄 Tipo detectado: {config_type}")
+        
     except Exception as e:
         print(f"❌ Falha ao carregar configuração: {e}")
         raise typer.Exit(code=1)
 
-    async def _run_async():
-        print("⚙️ Inicializando Motor de Workflow...")
+    async def _run_workflow_async(config: WorkerConfig):
+        """Executa workflow via WorkflowEngine."""
+        # Configurar reporter visual
+        try:
+            from src.worker.events import get_event_bus
+            from src.worker.reporters.console import ConsoleReporter
+            
+            bus = get_event_bus()
+            reporter = ConsoleReporter()
+            bus.subscribe_all(reporter.handle_event)
+        except ImportError as e:
+            print(f"⚠️ Falha ao carregar reporter visual: {e}")
+
         try:
             engine = WorkflowEngine(config)
-            
-            print(f"🚀 Iniciando execução do workflow com input: '{input_text}'")
             result = await engine.run(initial_input=input_text)
-            
-            print("\n✅ Execução do Workflow Concluída!")
-            print("=" * 30)
-            print(f"Resultado: {result}")
-            print("=" * 30)
             
         except Exception as e:
             print(f"\n❌ Erro de Execução: {e}")
@@ -170,7 +180,40 @@ def run(
             traceback.print_exc()
             raise typer.Exit(code=1)
 
-    asyncio.run(_run_async())
+    async def _run_agent_async(config: StandaloneAgentConfig):
+        """Executa agente standalone via AgentRunner."""
+        # Configurar reporter visual
+        try:
+            from src.worker.events import get_event_bus
+            from src.worker.reporters.console import ConsoleReporter
+            
+            bus = get_event_bus()
+            reporter = ConsoleReporter()
+            bus.subscribe_all(reporter.handle_event)
+        except ImportError as e:
+            print(f"⚠️ Falha ao carregar reporter visual: {e}")
+
+        try:
+            runner = AgentRunner(config)
+            result = await runner.run(input_text)
+            # Resultado já é exibido pelo ConsoleReporter via AGENT_RUN_COMPLETE
+            await runner.teardown()
+            
+        except Exception as e:
+            print(f"\n❌ Erro de Execução: {e}")
+            import traceback
+            traceback.print_exc()
+            raise typer.Exit(code=1)
+
+    # Executar baseado no tipo detectado
+    if config_type == "agent":
+        config = loader.load_agent()
+        print(f"🤖 Executando agente: {config.id} ({config.role})")
+        asyncio.run(_run_agent_async(config))
+    else:
+        config = loader.load()
+        print(f"⚙️ Executando workflow: {config.name}")
+        asyncio.run(_run_workflow_async(config))
 
 
 if __name__ == "__main__":

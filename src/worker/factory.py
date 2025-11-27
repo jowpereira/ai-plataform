@@ -1,42 +1,191 @@
 import importlib
 import os
 import functools
+import logging
 from typing import Any, Callable, Dict, List, Optional
 
 from agent_framework import ChatAgent
-from agent_framework.openai import OpenAIChatClient
-from agent_framework.azure import AzureOpenAIChatClient
-from azure.identity import AzureCliCredential
 
 from src.worker.config import AgentConfig, ModelConfig, ToolConfig, WorkerConfig
+from src.worker.providers import ProviderRegistry
+from src.worker.tools import ToolRegistry, ToolDefinition, ToolType
+from src.worker.middleware import EventMiddleware
+from src.worker.middleware.hygiene import MessageSanitizerMiddleware
+
+logger = logging.getLogger("worker.factory")
 
 
 class ToolFactory:
+    """
+    Factory para carregamento de ferramentas.
+    
+    Suporta dois modos:
+    1. Legacy: Carrega via path string (module:function)
+    2. Registry: Usa ToolRegistry para ferramentas registradas
+    
+    O modo Registry é preferido e oferece suporte a HTTP, MCP além de local.
+    """
+    
+    _registry: Optional[ToolRegistry] = None
+    
+    @classmethod
+    def get_registry(cls) -> ToolRegistry:
+        """Obtém ou cria o registry de ferramentas."""
+        if cls._registry is None:
+            cls._registry = ToolRegistry()
+        return cls._registry
+    
+    @classmethod
+    def register_tool(cls, definition: ToolDefinition) -> None:
+        """Registra uma ferramenta no registry."""
+        cls.get_registry().register(definition)
+    
+    @classmethod
+    def load_from_registry(cls, tool_name: str) -> Callable:
+        """Carrega ferramenta do registry."""
+        return cls.get_registry().get_callable(tool_name)
+    
     @staticmethod
     def load_tool(tool_config: ToolConfig) -> Callable:
-        """Carrega uma função Python dinamicamente a partir de uma string 'module:function'."""
+        """
+        Carrega uma ferramenta a partir da configuração.
+        
+        Tenta primeiro via ToolRegistry (se ferramenta registrada),
+        senão faz fallback para carregamento via importlib (legacy).
+        
+        Args:
+            tool_config: Configuração da ferramenta
+            
+        Returns:
+            Função callable para uso pelo agente
+        """
+        registry = ToolFactory.get_registry()
+        
+        # Tentar via registry primeiro
+        if registry.exists(tool_config.id):
+            logger.debug(f"Carregando ferramenta '{tool_config.id}' via ToolRegistry")
+            return registry.get_callable(tool_config.id)
+        
+        # Fallback: modo legacy via importlib
+        logger.debug(f"Carregando ferramenta '{tool_config.id}' via importlib (legacy)")
+        return ToolFactory._load_legacy(tool_config)
+    
+    @staticmethod
+    def _load_legacy(tool_config: ToolConfig) -> Callable:
+        """
+        Carrega ferramenta via importlib (modo legacy).
+        
+        Suporta:
+        - AIFunction: Retorna diretamente (framework já tem observabilidade)
+        - Funções simples: Envolve com wrapper de eventos
+        """
         try:
             module_path, func_name = tool_config.path.split(":")
         except ValueError:
-            raise ValueError(f"Formato de caminho de ferramenta inválido: {tool_config.path}. Esperado 'modulo:funcao'")
+            raise ValueError(
+                f"Formato de caminho de ferramenta inválido: {tool_config.path}. "
+                f"Esperado 'modulo:funcao'"
+            )
 
         try:
             module = importlib.import_module(module_path)
             func = getattr(module, func_name)
             if not callable(func):
-                raise ValueError(f"Objeto {func_name} em {module_path} não é chamável (callable)")
+                raise ValueError(
+                    f"Objeto {func_name} em {module_path} não é chamável (callable)"
+                )
             
-            # Wrapper para logging
+            # Se já é AIFunction, criar wrapper para manter observabilidade
+            from agent_framework import AIFunction
+            if isinstance(func, AIFunction):
+                logger.debug(f"Ferramenta '{tool_config.id}' é AIFunction nativa")
+                
+                # Criar wrapper que emite eventos e delega para AIFunction
+                original_ai_func = func
+                
+                @functools.wraps(original_ai_func.func)
+                def ai_function_wrapper(*args, **kwargs):
+                    logger.info(f"[TOOL] {tool_config.id} ({func_name})")
+                    logger.debug(f"  Input: args={args} kwargs={kwargs}")
+                    
+                    # Emitir evento START
+                    from src.worker.events import get_event_bus, WorkerEventType
+                    bus = get_event_bus()
+                    bus.emit_simple(
+                        WorkerEventType.TOOL_CALL_START, 
+                        {"tool": tool_config.id, "arguments": kwargs}
+                    )
+                    
+                    try:
+                        # Chamar a função original (não o AIFunction)
+                        result = original_ai_func.func(*args, **kwargs)
+                        
+                        # Emitir evento COMPLETE
+                        bus.emit_simple(
+                            WorkerEventType.TOOL_CALL_COMPLETE, 
+                            {"tool": tool_config.id, "result": result}
+                        )
+                        
+                        result_str = str(result)
+                        if len(result_str) > 200:
+                            logger.debug(f"  Output: {result_str[:200]}...")
+                        else:
+                            logger.debug(f"  Output: {result}")
+                        return result
+                    except Exception as e:
+                        logger.error(f"  Error: {e}")
+                        
+                        # Emitir evento ERROR
+                        bus.emit_simple(
+                            WorkerEventType.TOOL_CALL_ERROR, 
+                            {"tool": tool_config.id, "error": str(e)}
+                        )
+                        raise e
+                
+                # Retornar nova AIFunction com o wrapper
+                from agent_framework import ai_function
+                return ai_function(
+                    name=original_ai_func.name,
+                    description=original_ai_func.description,
+                )(ai_function_wrapper)
+            
+            # Wrapper para logging e eventos (funções simples)
             @functools.wraps(func)
             def logged_tool(*args, **kwargs):
-                print(f"\n🛠️ [TOOL EXECUTION] {tool_config.id} ({func_name})")
-                print(f"   📥 Input: args={args} kwargs={kwargs}")
+                logger.info(f"[TOOL] {tool_config.id} ({func_name})")
+                logger.debug(f"  Input: args={args} kwargs={kwargs}")
+                
+                # Emitir evento START
+                from src.worker.events import get_event_bus, WorkerEventType
+                bus = get_event_bus()
+                bus.emit_simple(
+                    WorkerEventType.TOOL_CALL_START, 
+                    {"tool": tool_config.id, "arguments": kwargs}
+                )
+                
                 try:
                     result = func(*args, **kwargs)
-                    print(f"   📤 Output: {str(result)[:200]}..." if len(str(result)) > 200 else f"   📤 Output: {result}")
+                    
+                    # Emitir evento COMPLETE
+                    bus.emit_simple(
+                        WorkerEventType.TOOL_CALL_COMPLETE, 
+                        {"tool": tool_config.id, "result": result}
+                    )
+                    
+                    result_str = str(result)
+                    if len(result_str) > 200:
+                        logger.debug(f"  Output: {result_str[:200]}...")
+                    else:
+                        logger.debug(f"  Output: {result}")
                     return result
                 except Exception as e:
-                    print(f"   ❌ Error: {e}")
+                    logger.error(f"  Error: {e}")
+                    
+                    # Emitir evento ERROR
+                    bus.emit_simple(
+                        WorkerEventType.TOOL_CALL_ERROR, 
+                        {"tool": tool_config.id, "error": str(e)}
+                    )
                     raise e
 
             return logged_tool
@@ -44,38 +193,87 @@ class ToolFactory:
         except ImportError as e:
             raise ImportError(f"Não foi possível importar o módulo {module_path}: {e}")
         except AttributeError:
-            raise AttributeError(f"Função {func_name} não encontrada no módulo {module_path}")
+            raise AttributeError(
+                f"Função {func_name} não encontrada no módulo {module_path}"
+            )
+    
+    @classmethod
+    def register_from_config(cls, tool_config: ToolConfig) -> None:
+        """
+        Registra uma ferramenta a partir de ToolConfig.
+        
+        Converte ToolConfig para ToolDefinition e registra no registry.
+        """
+        # Determinar tipo baseado no path
+        path = tool_config.path
+        
+        if path.startswith(("http://", "https://")):
+            tool_type = ToolType.HTTP
+            source = path
+        elif path.startswith("mcp://"):
+            tool_type = ToolType.MCP
+            source = path
+        else:
+            # Assumir local (module:function -> module.function)
+            tool_type = ToolType.LOCAL
+            source = path.replace(":", ".")
+        
+        definition = ToolDefinition(
+            name=tool_config.id,
+            description=tool_config.description or f"Ferramenta {tool_config.id}",
+            type=tool_type,
+            source=source,
+        )
+        
+        cls.register_tool(definition)
 
 
 class AgentFactory:
+    """
+    Factory para criação de agentes usando providers desacoplados.
+    
+    Usa ProviderRegistry para criar clientes de forma agnóstica ao provider.
+    """
+    
     def __init__(self, config: WorkerConfig, preloaded_agents: Optional[Dict[str, Any]] = None):
         self.config = config
         self.tool_map = {t.id: t for t in config.resources.tools}
         self.model_map = config.resources.models
         self.preloaded_agents = preloaded_agents or {}
+        # Inicializa o registry de providers
+        self._provider_registry = ProviderRegistry()
 
-    def _create_client(self, model_ref: str) -> Any:
+    def create_client(self, model_ref: str) -> Any:
+        """
+        Cria um cliente LLM usando o ProviderRegistry.
+        
+        Args:
+            model_ref: Referência ao modelo definido em resources.models
+            
+        Returns:
+            Cliente de chat compatível com agent_framework
+            
+        Raises:
+            ValueError: Se modelo não encontrado ou provider não suportado
+        """
         if model_ref not in self.model_map:
             raise ValueError(f"Referência de modelo '{model_ref}' não encontrada nos recursos")
 
         model_config = self.model_map[model_ref]
-
-        # Configurar variáveis de ambiente específicas do modelo, se houver
-        if model_config.env_vars:
-            for k, v in model_config.env_vars.items():
-                os.environ[k] = v
-
-        if model_config.type == "openai":
-            return OpenAIChatClient(model_id=model_config.deployment)
-        elif model_config.type == "azure-openai":
-            # AzureOpenAIChatClient usa env vars automaticamente (AZURE_OPENAI_API_KEY, AZURE_OPENAI_ENDPOINT)
-            # Não precisa de credential explícito
-            return AzureOpenAIChatClient(deployment_name=model_config.deployment)
-        else:
-            raise ValueError(f"Tipo de modelo não suportado: {model_config.type}")
+        
+        # Delegar criação ao ProviderRegistry (desacoplado!)
+        return self._provider_registry.create_client(model_config)
 
     def create_agent(self, agent_id: str, middleware: Optional[List[Any]] = None) -> ChatAgent:
         applied_middleware: list[Any] = list(middleware or [])
+        
+        # Adicionar MessageSanitizerMiddleware para robustez
+        # Garante que mensagens estejam limpas antes de processamento
+        applied_middleware.insert(0, MessageSanitizerMiddleware())
+        
+        # Adicionar EventMiddleware para observabilidade
+        # Inserir no início para capturar tudo
+        applied_middleware.insert(0, EventMiddleware(agent_id))
 
         # 0. Verificar se já foi pré-carregado
         if agent_id in self.preloaded_agents:
@@ -90,7 +288,7 @@ class AgentFactory:
                 else:
                     agent = copy.copy(original_agent)
             except Exception as e:
-                print(f"Warning: Failed to copy agent {agent_id}: {e}. Using original.")
+                logging.warning(f"Failed to copy agent {agent_id}: {e}. Using original.")
                 agent = original_agent
 
             if applied_middleware:
@@ -104,7 +302,7 @@ class AgentFactory:
             raise ValueError(f"Agente '{agent_id}' não encontrado na configuração")
 
         # Criar Cliente
-        client = self._create_client(agent_conf.model)
+        client = self.create_client(agent_conf.model)
 
         # Carregar Tools
         loaded_tools = []
@@ -117,7 +315,9 @@ class AgentFactory:
 
         agent_name = agent_conf.id
         display_name = agent_conf.role or agent_conf.id
-        description = agent_conf.description or display_name
+        # Incluir ID na descrição para ajudar o Manager a selecionar corretamente
+        base_desc = agent_conf.description or display_name
+        description = f"Participant ID: {agent_name}. Role/Description: {base_desc}"
 
         agent = ChatAgent(
             id=agent_conf.id,
@@ -132,4 +332,17 @@ class AgentFactory:
         if display_name and display_name != agent_name:
             agent.additional_properties["display_name"] = display_name
 
+        return agent
+
+    def create_manager_agent(self, model_ref: str, instructions: str, name: str = "GroupManager") -> ChatAgent:
+        """Cria um agente manager dedicado para orquestração."""
+        client = self.create_client(model_ref)
+        
+        agent = ChatAgent(
+            name=name,
+            description="Coordenador do grupo",
+            instructions=instructions,
+            chat_client=client,
+            middleware=[EventMiddleware(name)]
+        )
         return agent

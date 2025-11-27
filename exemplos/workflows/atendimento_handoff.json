@@ -1,0 +1,89 @@
+{
+  "version": "1.0",
+  "name": "Central de Atendimento Inteligente",
+  "resources": {
+    "models": {
+      "gpt-4o-mini": {
+        "type": "azure-openai",
+        "deployment": "gpt-4o-mini"
+      }
+    },
+    "tools": [
+      {
+        "id": "verificar_status_sistema",
+        "path": "mock_tools.basic:verificar_status_sistema",
+        "description": "Verifica se um sistema está online ou offline"
+      },
+      {
+        "id": "calcular_custos",
+        "path": "mock_tools.basic:calcular_custos",
+        "description": "Calcula estimativa de custos"
+      }
+    ]
+  },
+  "agents": [
+    {
+      "id": "triagem",
+      "role": "Agente de Triagem",
+      "description": "Classifica e direciona as solicitações dos clientes.",
+      "model": "gpt-4o-mini",
+      "instructions": "Você é o agente de triagem da central de atendimento.\n\nClassifique a solicitação e use a ferramenta de handoff apropriada:\n- Problemas técnicos, sistema fora do ar → handoff_to_suporte\n- Dúvidas sobre cobrança, fatura, pagamento → handoff_to_financeiro\n- Contratação, cotação, produtos → handoff_to_comercial\n\nNÃO responda a pergunta. Apenas transfira.",
+      "tools": []
+    },
+    {
+      "id": "suporte",
+      "role": "Suporte Técnico",
+      "description": "Resolve problemas técnicos e de sistema.",
+      "model": "gpt-4o-mini",
+      "instructions": "Você é o suporte técnico.\n\n1. Verifique o status do sistema mencionado\n2. Oriente o usuário com passos claros\n3. Se não resolver, informe que será escalado\n\nSeja cordial e técnico.",
+      "tools": ["verificar_status_sistema"]
+    },
+    {
+      "id": "financeiro",
+      "role": "Atendimento Financeiro",
+      "description": "Trata questões de cobrança e pagamentos.",
+      "model": "gpt-4o-mini",
+      "instructions": "Você é o atendente financeiro.\n\nAjude com:\n- Explicar faturas e cobranças\n- Negociar prazos de pagamento\n- Esclarecer descontos e promoções\n\nSempre confirme dados antes de qualquer alteração.",
+      "tools": ["calcular_custos"]
+    },
+    {
+      "id": "comercial",
+      "role": "Consultor Comercial",
+      "description": "Atende solicitações de vendas e novos produtos.",
+      "model": "gpt-4o-mini",
+      "instructions": "Você é o consultor comercial.\n\nSua missão:\n- Apresentar produtos disponíveis\n- Fazer simulações de preço\n- Agendar retorno de especialista\n\nSeja consultivo, não apenas vendedor.",
+      "tools": ["calcular_custos"]
+    }
+  ],
+  "workflow": {
+    "type": "handoff",
+    "start_step": "step_triagem",
+    "steps": [
+      {
+        "id": "step_triagem",
+        "type": "agent",
+        "agent": "triagem",
+        "input_template": "{{ input }}",
+        "transitions": ["step_suporte", "step_financeiro", "step_comercial"]
+      },
+      {
+        "id": "step_suporte",
+        "type": "agent",
+        "agent": "suporte",
+        "input_template": "Usuário precisa de suporte técnico: {{ input }}"
+      },
+      {
+        "id": "step_financeiro",
+        "type": "agent",
+        "agent": "financeiro",
+        "input_template": "Usuário tem dúvida financeira: {{ input }}"
+      },
+      {
+        "id": "step_comercial",
+        "type": "agent",
+        "agent": "comercial",
+        "input_template": "Usuário quer informações comerciais: {{ input }}"
+      }
+    ]
+  }
+}

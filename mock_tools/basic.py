@@ -1,11 +1,20 @@
+"""
+Mock tools para testes.
+
+Utiliza o decorator @ai_function do Microsoft Agent Framework
+para registro automático de ferramentas com schema JSON.
+"""
+
 from __future__ import annotations
 
 from random import choice, randint
 from typing import Annotated
 
 from pydantic import Field
+from agent_framework import ai_function
 
 
+@ai_function(name="consultar_clima", description="Consulta previsão do tempo simulada")
 def consultar_clima(
     localizacao: Annotated[str, Field(description="Cidade ou região para consultar", examples=["São Paulo", "Rio de Janeiro"])],
     unidade: Annotated[str, Field(description="Unidade de temperatura preferida", examples=["celsius", "fahrenheit"])] = "celsius",
@@ -23,6 +32,7 @@ def consultar_clima(
     )
 
 
+@ai_function(name="resumir_diretrizes", description="Resume diretrizes internas sobre um tópico")
 def resumir_diretrizes(
     topico: Annotated[str, Field(description="Tema ou produto a ser resumido")],
 ) -> str:
@@ -35,6 +45,7 @@ def resumir_diretrizes(
     return choice(templates)
 
 
+@ai_function(name="calcular_custos", description="Calcula previsão de custos para carga de trabalho")
 def calcular_custos(
     carga_trabalho: Annotated[str, Field(description="Identificador da carga de trabalho")],
     horas: Annotated[int, Field(description="Horas previstas", ge=1, le=72)] = 4,
@@ -47,6 +58,7 @@ def calcular_custos(
     )
 
 
+@ai_function(name="verificar_status_sistema", description="Verifica status de um sistema (ONLINE/OFFLINE)")
 def verificar_status_sistema(
     sistema: Annotated[str, Field(description="Nome do sistema para verificar status")]
 ) -> str:
@@ -57,6 +69,7 @@ def verificar_status_sistema(
     return "OFFLINE"
 
 
+@ai_function(name="verificar_resolucao", description="Verifica se uma correção técnica foi bem-sucedida")
 def verificar_resolucao(
     ticket_id: Annotated[str, Field(description="ID do ticket ou problema")]
 ) -> str:
@@ -65,3 +78,12 @@ def verificar_resolucao(
     if ticket_id.endswith("99"):
         return "FALHA: O sistema ainda apresenta lentidão."
     return "SUCESSO: O sistema está estável."
+
+
+__all__ = [
+    "consultar_clima",
+    "resumir_diretrizes",
+    "calcular_custos",
+    "verificar_status_sistema",
+    "verificar_resolucao",
+]

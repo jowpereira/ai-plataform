@@ -1,21 +1,31 @@
 [project]
 name = "ai-platform-generic-worker"
-version = "0.0.1"
+version = "0.0.2"
 description = "Configurable generic worker"
 requires-python = ">=3.10"
 dependencies = [
-    "agent-framework>=1.0.0b251114",
-    "agent-framework-declarative",
-    "agent-framework-devui",
-    "agent-framework-azure-ai",
-    "azure-identity",
+    # Core Agent Framework - versão local para alinhamento
+    "agent-framework-core @ file:///C:/Users/jonperei/Desktop/Workspace/ai-plataform/.agent_framework_comparison/python/packages/core",
+    "agent-framework-devui>=1.0.0b251120",
+    "agent-framework-azure-ai>=1.0.0b251120",
+    # Dependências mínimas exigidas pelo core
+    "openai>=1.99.0",
+    "mcp[ws]>=1.13",
+    "opentelemetry-exporter-otlp-proto-grpc>=1.36.0",
+    # Azure Identity (removida duplicação)
+    "azure-identity>=1.15.0",
+    # Outras dependências
     "pydantic>=2.7",
     "python-dotenv>=1.0.1",
     "pyyaml>=6.0.3",
     "typer>=0.12.5",
 ]
 
-[tool.uv.sources]
-agent-framework-declarative = { git = "https://github.com/microsoft/agent-framework.git", subdirectory = "python/packages/declarative" }
+[dependency-groups]
+dev = [
+    "pytest>=9.0.1",
+]
+
+
 
 

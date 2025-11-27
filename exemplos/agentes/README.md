@@ -26,6 +26,18 @@ Esta pasta contém as definições de agentes individuais criados via UI.
 | `instructions` | ✅ | System prompt do agente |
 | `tools` | ❌ | Lista de IDs de ferramentas |
 
+## Agentes Disponíveis
+
+| Arquivo | Role | Descrição | Ferramentas |
+|---------|------|-----------|-------------|
+| `agente_pesquisador.json` | Pesquisador | Especialista em pesquisa climática | `consultar_clima` |
+| `agente_escritor.json` | Escritor | Cria roteiros e textos | - |
+| `agente_analista_fraude.json` | Analista de Fraudes | Detecta padrões fraudulentos | - |
+| `agente_suporte_tecnico.json` | Suporte Técnico N1 | Triagem e resolução técnica | `verificar_status_sistema` |
+| `agente_extrator_dados.json` | Extrator de Dados | Estrutura dados de documentos | - |
+| `agente_auditor.json` | Auditor de Qualidade | Valida conformidade | - |
+| `agente_resumidor.json` | Resumidor Executivo | Cria resumos acionáveis | - |
+
 ## Uso
 
 Os agentes definidos aqui podem ser referenciados em workflows.

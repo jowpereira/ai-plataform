@@ -1,0 +1,69 @@
+{
+  "version": "1.0",
+  "name": "Magentic Research Team",
+  "description": "Workflow Magentic One com equipe de pesquisa e análise. O manager planeja dinamicamente e coordena os especialistas.",
+  "resources": {
+    "models": {
+      "gpt-4o": {
+        "type": "azure-openai",
+        "deployment": "gpt-4o"
+      },
+      "gpt-4o-mini": {
+        "type": "azure-openai",
+        "deployment": "gpt-4o-mini"
+      }
+    },
+    "tools": []
+  },
+  "agents": [
+    {
+      "id": "researcher",
+      "role": "Pesquisador",
+      "description": "Especialista em pesquisa e coleta de informações. Busca dados, fatos e referências relevantes para o tema.",
+      "model": "gpt-4o-mini",
+      "instructions": "Você é um pesquisador experiente. Seu papel é:\n1. Identificar fontes relevantes\n2. Coletar dados e fatos\n3. Validar informações\n4. Reportar descobertas de forma estruturada",
+      "tools": []
+    },
+    {
+      "id": "analyst",
+      "role": "Analista",
+      "description": "Especialista em análise de dados e insights. Interpreta informações e identifica padrões e conclusões.",
+      "model": "gpt-4o-mini",
+      "instructions": "Você é um analista estratégico. Seu papel é:\n1. Analisar dados coletados\n2. Identificar padrões e tendências\n3. Gerar insights acionáveis\n4. Recomendar próximos passos",
+      "tools": []
+    },
+    {
+      "id": "writer",
+      "role": "Redator",
+      "description": "Especialista em comunicação e redação. Transforma análises em relatórios claros e concisos.",
+      "model": "gpt-4o-mini",
+      "instructions": "Você é um redator profissional. Seu papel é:\n1. Sintetizar informações\n2. Criar relatórios estruturados\n3. Adaptar linguagem ao público\n4. Garantir clareza e precisão",
+      "tools": []
+    }
+  ],
+  "workflow": {
+    "type": "magentic",
+    "manager_model": "gpt-4o-mini",
+    "max_rounds": 15,
+    "max_stall_count": 3,
+    "enable_plan_review": false,
+    "manager_instructions": "Você é o coordenador de uma equipe de especialistas. Analise a tarefa, crie um plano de execução e coordene os participantes para alcançar o objetivo de forma eficiente.",
+    "steps": [
+      {
+        "id": "step_researcher",
+        "type": "agent",
+        "agent": "researcher"
+      },
+      {
+        "id": "step_analyst",
+        "type": "agent",
+        "agent": "analyst"
+      },
+      {
+        "id": "step_writer",
+        "type": "agent",
+        "agent": "writer"
+      }
+    ]
+  }
+}

@@ -39,6 +39,18 @@ Um agente roteador decide para qual agente delegar.
 }
 ```
 
+## Workflows Disponíveis
+
+| Arquivo | Tipo | Cenário | Agentes |
+|---------|------|---------|---------|
+| `flow_001.json` | Group Chat | Planejamento de Viagem | Pesquisador, Escritor |
+| `sequencial_agent.json` | Sequential | Fluxo básico | Pesquisador |
+| `sinistro_sequential.json` | Sequential | Análise de Sinistro | Extrator, Analista, Resumidor |
+| `atendimento_handoff.json` | Handoff | Central de Atendimento | Triagem, Suporte, Financeiro, Comercial |
+| `classificador_router.json` | Router | Classificação de Documentos | Classificador + 4 Processadores |
+| `comite_risco_groupchat.json` | Group Chat | Comitê de Análise de Risco | Risco, Compliance, Financeiro, Coordenador |
+| `email_triage_parallel.json` | Parallel | Triagem de Emails | Classificador, Extrator, Sumarizador |
+
 ## Execução
 
 ```bash

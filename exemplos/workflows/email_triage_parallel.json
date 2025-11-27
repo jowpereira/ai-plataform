@@ -1,0 +1,62 @@
+{
+  "version": "1.0",
+  "name": "Triagem de Email Inteligente",
+  "resources": {
+    "models": {
+      "gpt-4o-mini": {
+        "type": "azure-openai",
+        "deployment": "gpt-4o-mini"
+      }
+    },
+    "tools": []
+  },
+  "agents": [
+    {
+      "id": "classificador_urgencia",
+      "role": "Classificador de Urgência",
+      "description": "Classifica a urgência do email recebido.",
+      "model": "gpt-4o-mini",
+      "instructions": "Você classifica a urgência de emails.\n\nCritérios:\n- CRÍTICA: Risco imediato, deadline hoje, cliente VIP irritado\n- ALTA: Prazo em 24h, reclamação formal, problema operacional\n- MÉDIA: Prazo em 48h, dúvidas, solicitações padrão\n- BAIXA: Informativo, sem prazo, FYI\n\nRetorne JSON:\n{\"urgencia\": \"...\", \"justificativa\": \"...\"}",
+      "tools": []
+    },
+    {
+      "id": "extrator_acoes",
+      "role": "Extrator de Ações",
+      "description": "Identifica ações necessárias no email.",
+      "model": "gpt-4o-mini",
+      "instructions": "Você extrai ações de emails.\n\nIdentifique:\n- Ações explícitas solicitadas\n- Ações implícitas necessárias\n- Responsáveis mencionados\n- Deadlines citados\n\nRetorne JSON:\n{\"acoes\": [...], \"responsaveis\": [...], \"prazos\": [...]}",
+      "tools": []
+    },
+    {
+      "id": "sumarizador",
+      "role": "Sumarizador",
+      "description": "Cria resumo executivo do email.",
+      "model": "gpt-4o-mini",
+      "instructions": "Você cria resumos de emails.\n\nFormato (máx 3 linhas):\n- DE: [remetente]\n- ASSUNTO: [tema principal]\n- AÇÃO: [o que precisa ser feito]\n\nSeja direto e objetivo.",
+      "tools": []
+    }
+  ],
+  "workflow": {
+    "type": "parallel",
+    "steps": [
+      {
+        "id": "step_urgencia",
+        "type": "agent",
+        "agent": "classificador_urgencia",
+        "input_template": "Classifique a urgência:\n\n{{ input }}"
+      },
+      {
+        "id": "step_acoes",
+        "type": "agent",
+        "agent": "extrator_acoes",
+        "input_template": "Extraia as ações:\n\n{{ input }}"
+      },
+      {
+        "id": "step_resumo",
+        "type": "agent",
+        "agent": "sumarizador",
+        "input_template": "Resuma o email:\n\n{{ input }}"
+      }
+    ]
+  }
+}

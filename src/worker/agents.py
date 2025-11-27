@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Any, List, Union, AsyncIterable
 from agent_framework import BaseAgent, AgentRunResponse, ChatMessage, Executor, handler, response_handler, WorkflowContext
 from pydantic import BaseModel, Field
+from src.worker.strategies.confirmation import ConfirmationStrategy, CLIConfirmationStrategy, StructuredConfirmationStrategy, AutoApprovalStrategy
 
 @dataclass
 class HumanInputRequest:
@@ -14,10 +15,18 @@ class HumanInputResponse(BaseModel):
     content: str = Field(description="Sua resposta")
 
 class HumanAgent(Executor):
-    def __init__(self, id: str, name: str = "Human", instructions: str = ""):
+    def __init__(self, id: str, name: str = "Human", instructions: str = "", confirmation_mode: str = "cli"):
         super().__init__(id=id)
         self.name = name
         self.instructions = instructions
+        self.strategy = self._get_strategy(confirmation_mode)
+
+    def _get_strategy(self, mode: str) -> ConfirmationStrategy:
+        if mode == "structured":
+            return StructuredConfirmationStrategy()
+        elif mode == "auto":
+            return AutoApprovalStrategy()
+        return CLIConfirmationStrategy()
 
     @handler
     async def handle_message(self, message: Any, ctx: WorkflowContext[Union[HumanInputRequest, ChatMessage]]) -> Any:
@@ -33,21 +42,9 @@ class HumanAgent(Executor):
         else:
             prompt_text = str(message)
         
-        # Se não estiver no modo DevUI, usar input do console (CLI)
-        if not os.getenv("DEVUI_MODE"):
-            print(f"\n👤 [Entrada Humana Necessária] Passo: {self.id}")
-            print(f"❓ Prompt: {prompt_text}")
-            if self.instructions:
-                print(f"ℹ️ Instruções: {self.instructions}")
-            
-            user_response = await asyncio.to_thread(input, ">> ")
-            
-            # Enviar resposta diretamente para o próximo passo
-            await ctx.send_message(ChatMessage(role="user", text=user_response))
-            return user_response
+        # Delegar para a estratégia configurada
+        return await self.strategy.request_approval(self.id, prompt_text, self.instructions)
 
-        print(f"\n👤 [Entrada Humana Necessária] Passo: {self.id}")
-        print(f"❓ Prompt: {prompt_text}")
         
         # Send request for human input (triggers HIL in DevUI)
         req = HumanInputRequest(prompt=str(prompt_text), instructions=self.instructions)

@@ -1,0 +1,97 @@
+{
+  "version": "1.0",
+  "name": "Classificador de Documentos",
+  "resources": {
+    "models": {
+      "gpt-4o-mini": {
+        "type": "azure-openai",
+        "deployment": "gpt-4o-mini"
+      }
+    },
+    "tools": [
+      {
+        "id": "resumir_diretrizes",
+        "path": "mock_tools.basic:resumir_diretrizes",
+        "description": "Obtém diretrizes internas sobre um tópico"
+      }
+    ]
+  },
+  "agents": [
+    {
+      "id": "classificador",
+      "role": "Classificador de Documentos",
+      "description": "Identifica o tipo de documento recebido.",
+      "model": "gpt-4o-mini",
+      "instructions": "Você classifica documentos.\n\nAnalise o conteúdo e responda APENAS com uma das opções:\n- contrato\n- sinistro\n- reclamacao\n- solicitacao\n\nNenhum texto adicional. Apenas a categoria.",
+      "tools": []
+    },
+    {
+      "id": "processador_contrato",
+      "role": "Processador de Contratos",
+      "description": "Analisa e extrai informações de contratos.",
+      "model": "gpt-4o-mini",
+      "instructions": "Você processa contratos.\n\nExtraia:\n- Partes envolvidas\n- Objeto do contrato\n- Valor\n- Vigência\n- Cláusulas especiais\n\nRetorne em formato estruturado.",
+      "tools": ["resumir_diretrizes"]
+    },
+    {
+      "id": "processador_sinistro",
+      "role": "Processador de Sinistros",
+      "description": "Processa notificações de sinistro.",
+      "model": "gpt-4o-mini",
+      "instructions": "Você processa sinistros.\n\nExtraia:\n- Data/hora do evento\n- Tipo de sinistro\n- Descrição\n- Valor estimado\n- Testemunhas\n\nRetorne em formato estruturado.",
+      "tools": ["resumir_diretrizes"]
+    },
+    {
+      "id": "processador_reclamacao",
+      "role": "Processador de Reclamações",
+      "description": "Trata reclamações de clientes.",
+      "model": "gpt-4o-mini",
+      "instructions": "Você processa reclamações.\n\nIdentifique:\n- Motivo da reclamação\n- Sentimento do cliente (irritado, frustrado, neutro)\n- Urgência (alta, média, baixa)\n- Ação recomendada\n\nSeja empático na análise.",
+      "tools": ["resumir_diretrizes"]
+    },
+    {
+      "id": "processador_geral",
+      "role": "Processador Geral",
+      "description": "Processa solicitações gerais.",
+      "model": "gpt-4o-mini",
+      "instructions": "Você processa solicitações gerais.\n\nResuma o pedido e indique:\n- Tipo de solicitação\n- Prioridade sugerida\n- Área responsável\n\nSeja objetivo.",
+      "tools": ["resumir_diretrizes"]
+    }
+  ],
+  "workflow": {
+    "type": "router",
+    "start_step": "step_classificacao",
+    "steps": [
+      {
+        "id": "step_classificacao",
+        "type": "agent",
+        "agent": "classificador",
+        "input_template": "Classifique este documento:\n\n{{ input }}"
+      },
+      {
+        "id": "contrato",
+        "type": "agent",
+        "agent": "processador_contrato",
+        "input_template": "Processe este contrato:\n\n{{ input }}"
+      },
+      {
+        "id": "sinistro",
+        "type": "agent",
+        "agent": "processador_sinistro",
+        "input_template": "Processe este sinistro:\n\n{{ input }}"
+      },
+      {
+        "id": "reclamacao",
+        "type": "agent",
+        "agent": "processador_reclamacao",
+        "input_template": "Processe esta reclamação:\n\n{{ input }}"
+      },
+      {
+        "id": "solicitacao",
+        "type": "agent",
+        "agent": "processador_geral",
+        "input_template": "Processe esta solicitação:\n\n{{ input }}"
+      }
+    ]
+  }
+}

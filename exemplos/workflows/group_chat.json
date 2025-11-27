@@ -22,12 +22,14 @@
       "id": "writer",
       "role": "Escritor",
       "model": "gpt-4o-mini",
-      "instructions": "Você é um escritor. Escreva um resumo com base na pesquisa.",
+      "instructions": "Você é um escritor. Escreva um resumo com base na pesquisa. Ao final, escreva EXATAMENTE: FIM_DO_CHAT",
       "tools": []
     }
   ],
   "workflow": {
     "type": "group_chat",
+    "manager_instructions": "Você é um orquestrador. Regras:\n1. Se o histórico estiver vazio ou só tiver o usuário, chame 'researcher'.\n2. Se o 'researcher' já falou, chame 'writer'.\n3. Se o 'writer' já falou, NÃO chame ninguém (o chat deve encerrar).\nNUNCA chame o 'researcher' depois que ele já tiver falado.",
+    "termination_condition": "FIM_DO_CHAT",
     "steps": [
       {
         "id": "step1",

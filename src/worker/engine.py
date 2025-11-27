@@ -1,23 +1,70 @@
 import json
+import logging
 import os
-from typing import Any, Dict, Optional
+import uuid
+from typing import Any, Dict, Optional, List
 
-from agent_framework import Workflow, WorkflowBuilder, Case, Default, ExecutorCompletedEvent, AgentRunEvent, SequentialBuilder, ConcurrentBuilder, GroupChatBuilder, HandoffBuilder, ChatAgent
+from agent_framework import Workflow, ChatAgent, ChatMessage, ExecutorCompletedEvent, AgentRunEvent
 
 from src.worker.config import WorkerConfig
 from src.worker.factory import AgentFactory
 from src.worker.middleware import EnhancedTemplateMiddleware
 from src.worker.agents import HumanAgent
+from src.worker.strategies import StrategyRegistry, get_strategy_registry
+from src.worker.events import SimpleEventBus, get_event_bus, WorkerEventType
+from src.worker.state import WorkflowStateManager
 
 
 class WorkflowEngine:
-    def __init__(self, config: WorkerConfig):
+    """
+    Motor de execução de workflows.
+    
+    Usa StrategyRegistry para construção desacoplada de workflows
+    e EventBus para observabilidade.
+    """
+    
+    def __init__(self, config: WorkerConfig, event_bus: Optional[SimpleEventBus] = None):
         self.config = config
         self.agent_factory = AgentFactory(config)
         self._workflow: Optional[Workflow] = None
+        self._event_bus = event_bus or get_event_bus()
+        self._strategy_registry = get_strategy_registry()
+        self.state_manager: Optional[WorkflowStateManager] = None
+        self._last_agent_response: Optional[str] = None  # Captura última resposta via eventos
+        self._response_subscription_id: Optional[str] = None
+
+    @property
+    def event_bus(self) -> SimpleEventBus:
+        """Retorna o EventBus para inscrição de hooks externos."""
+        return self._event_bus
+    
+    def _capture_agent_response(self, event: Any) -> None:
+        """Callback para capturar a última resposta de agente."""
+        if hasattr(event, 'type') and event.type == WorkerEventType.AGENT_RESPONSE:
+            content = event.data.get("content", "")
+            if content and content != "Completed":
+                self._last_agent_response = content
+
+    def _emit(self, event_type: WorkerEventType, data: Optional[Dict[str, Any]] = None) -> None:
+        """Emite evento se o bus estiver configurado."""
+        if self._event_bus:
+            self._event_bus.emit_simple(event_type, data or {})
+
+    def setup(self) -> None:
+        """Inicializa recursos, estado e constrói o workflow."""
+        self.state_manager = WorkflowStateManager(execution_id=str(uuid.uuid4()))
+        self.build()
+        self.state_manager.set_status("initialized")
+
+    def teardown(self) -> None:
+        """Limpa recursos após execução."""
+        # Aqui poderíamos fechar conexões de banco, clientes HTTP, etc.
+        pass
 
     def build(self):
-        """Constrói o objeto Workflow baseado na configuração usando builders nativos de alto nível."""
+        """Constrói o objeto Workflow baseado na configuração usando strategies."""
+        self._emit(WorkerEventType.SETUP_START, {"workflow_type": self.config.workflow.type})
+        
         steps = self.config.workflow.steps
         workflow_type = self.config.workflow.type
         
@@ -28,16 +75,15 @@ class WorkflowEngine:
                 "sequential, parallel, group_chat, handoff, router."
             )
         
-        # Mapa de step_id -> agent_instance
+        # 1. Criar todos os agentes
         step_agents = {}
         ordered_agents = []
         
-        # 1. Criar todos os agentes
         for step in steps:
             agent = None
             if step.type == "agent":
                 if not step.agent:
-                     raise ValueError(f"Passo {step.id} do tipo 'agent' deve ter um 'agent' definido.")
+                    raise ValueError(f"Passo {step.id} do tipo 'agent' deve ter um 'agent' definido.")
                 
                 # Criar middleware de template se necessário
                 middleware = []
@@ -49,231 +95,104 @@ class WorkflowEngine:
                 
             elif step.type == "human":
                 # Criar agente humano
-                agent = HumanAgent(id=step.id, instructions=step.input_template)
+                # Determinar modo de confirmação (pode vir de config global ou do step se suportado)
+                # Por enquanto, vamos assumir CLI como padrão ou checar variável de ambiente
+                mode = "cli"
+                if os.getenv("DEVUI_MODE"):
+                    mode = "structured"
+                
+                agent = HumanAgent(
+                    id=step.id, 
+                    instructions=step.input_template,
+                    confirmation_mode=mode
+                )
             
             if agent:
                 step_agents[step.id] = agent
                 ordered_agents.append(agent)
 
-        # 2. Construir workflow usando o builder apropriado
-        if workflow_type == "sequential":
-            # Usar SequentialBuilder para fluxos sequenciais
-            # Ele conecta automaticamente os participantes em ordem
-            self._workflow = SequentialBuilder().participants(ordered_agents).build()
-            
-        elif workflow_type == "parallel":
-            # Usar ConcurrentBuilder para fluxos paralelos (fan-out/fan-in)
-            # Ele cria automaticamente o dispatcher e aggregator
-            self._workflow = ConcurrentBuilder().participants(ordered_agents).build()
-            
-        elif workflow_type == "group_chat":
-            # Usar GroupChatBuilder para chat em grupo
-            # Requer um manager para coordenar
-            builder = GroupChatBuilder()
-            builder.participants(ordered_agents)
-            
-            # Configurar max rounds
-            if self.config.workflow.max_rounds:
-                # A API correta é with_max_rounds
-                builder.with_max_rounds(self.config.workflow.max_rounds)
-            
-            # Tentar encontrar um modelo padrão para o manager
-            # Prioridade: 1. Config específica do workflow, 2. Modelo do primeiro agente
-            manager_model_id = self.config.workflow.manager_model
-            if not manager_model_id and self.config.agents:
-                manager_model_id = self.config.agents[0].model
-            
-            # Criar um agente manager simples
-            if manager_model_id:
-                try:
-                    # Usar método interno da factory para criar o client
-                    # Isso é um hack, idealmente a factory deveria expor create_client
-                    client = self.agent_factory._create_client(manager_model_id)
-                    
-                    instructions = self.config.workflow.manager_instructions or "Select the next speaker based on the conversation context."
-                    
-                    # Injetar condição de término nas instruções, pois GroupChatBuilder não tem método set_termination_condition
-                    if self.config.workflow.termination_condition:
-                        term_cond = self.config.workflow.termination_condition
-                        instructions += f"\n\nIMPORTANT: If any participant says '{term_cond}', you must set 'finish' to true immediately."
+        # 2. Validar configuração
+        errors = self._strategy_registry.validate(workflow_type, self.config.workflow)
+        if errors:
+            # Logar warnings mas não bloquear (algumas validações são soft)
+            for error in errors:
+                logging.warning(f"Validation: {error}")
 
-                    builder.set_prompt_based_manager(
-                        chat_client=client,
-                        instructions=instructions,
-                        display_name="GroupManager"
-                    )
-                except Exception as e:
-                    print(f"Warning: Failed to create manager agent: {e}")
-                    # Se falhar, o builder pode reclamar se não tiver manager
-                    pass
+        # 3. Construir workflow usando Strategy Pattern
+        self._workflow = self._strategy_registry.build(
+            workflow_type=workflow_type,
+            agents=ordered_agents,
+            config=self.config.workflow,
+            agent_factory=self.agent_factory
+        )
 
-            self._workflow = builder.build()
-
-        elif workflow_type == "handoff":
-            # Usar HandoffBuilder para transições explícitas
-            builder = HandoffBuilder()
-            builder.participants(ordered_agents)
-            
-            start_step_id = self.config.workflow.start_step
-            if start_step_id and start_step_id in step_agents:
-                builder.set_coordinator(step_agents[start_step_id])
-            
-            # Configurar transições baseadas no campo 'transitions' dos steps
-            for step in steps:
-                if step.transitions:
-                    source_agent = step_agents.get(step.id)
-                    targets = [step_agents[t] for t in step.transitions if t in step_agents]
-                    
-                    if source_agent and targets:
-                        builder.add_handoff(source_agent, targets)
-            
-            self._workflow = builder.build()
-
-        elif workflow_type == "router":
-            # Para router, usamos o WorkflowBuilder base pois precisamos de lógica customizada de arestas
-            builder = WorkflowBuilder()
-            
-            # Adicionar todos os agentes ao builder
-            for agent in step_agents.values():
-                builder.add_agent(agent)
-            
-            start_step_id = self.config.workflow.start_step
-            if not start_step_id:
-                raise ValueError("Workflow do tipo Router requer 'start_step'")
-            
-            start_agent = step_agents[start_step_id]
-            builder.set_start_executor(start_agent)
-            
-            # Mapear saídas do router para os próximos agentes
-            cases = []
-            
-            def make_condition(target_id):
-                def condition(output):
-                    # Extrair valor do output
-                    val = output
-                    
-                    # Se for AgentExecutorResponse (do framework)
-                    if hasattr(output, 'agent_run_response'):
-                        val = output.agent_run_response
-                        
-                    # Se for AgentRunResponse (do agente)
-                    if hasattr(val, 'value') and val.value is not None:
-                        val = val.value
-                    elif hasattr(val, 'messages') and val.messages:
-                        # Tentar pegar o último conteúdo
-                        last_msg = val.messages[-1]
-                        if hasattr(last_msg, 'content'):
-                            val = last_msg.content
-                        elif hasattr(last_msg, 'text'):
-                            val = last_msg.text
-                        else:
-                            val = str(last_msg)
-                    elif hasattr(val, 'content'):
-                        val = val.content
-                    elif hasattr(val, 'text'):
-                        val = val.text
-                    
-                    # Debug
-                    # print(f"DEBUG: Router output: '{val}', Target: '{target_id}', Match: {str(val).strip() == target_id}")
-                        
-                    # Comparar com o ID do alvo (case insensitive)
-                    return str(val).strip().lower() == target_id.lower()
-                return condition
-
-            # Identificar passos de destino (excluindo o start_step)
-            target_steps = [s for s in steps if s.id != start_step_id]
-            
-            if not target_steps:
-                raise ValueError("Workflow Router deve ter pelo menos um passo de destino.")
-                
-            # Usar o último passo como Default
-            default_step = target_steps[-1]
-            other_steps = target_steps[:-1]
-            
-            # Adicionar Cases para os outros passos
-            for step in other_steps:
-                cases.append(Case(condition=make_condition(step.id), target=step_agents[step.id]))
-                
-            # Adicionar Default para o último passo
-            cases.append(Default(target=step_agents[default_step.id]))
-            
-            # Adicionar grupo de arestas switch-case
-            builder.add_switch_case_edge_group(start_agent, cases)
-            
-            self._workflow = builder.build()
-
-        # Atribuir nome ao workflow se disponível na configuração
+        # 4. Atribuir nome ao workflow se disponível
         if self._workflow and self.config.name:
             try:
                 self._workflow.name = self.config.name
             except AttributeError:
                 pass
-            
-            # Tentar definir label também, se suportado
-            # try:
-            #     self._workflow.label = self.config.name
-            # except AttributeError:
-            #     pass
+        
+        self._emit(WorkerEventType.SETUP_COMPLETE, {
+            "workflow_type": workflow_type,
+            "agent_count": len(ordered_agents)
+        })
 
     async def run(self, initial_input: str) -> Any:
         """Executa o workflow usando o motor nativo."""
         if not self._workflow:
-            self.build()
+            self.setup()
             
-        if not self._workflow:
-             raise RuntimeError("Failed to build workflow.")
+        if not self._workflow or not self.state_manager:
+            raise RuntimeError("Failed to build workflow or initialize state.")
 
-        print(f"🚀 Iniciando execução nativa do workflow ({self.config.workflow.type})...")
+        self.state_manager.set_status("running")
+        self._emit(WorkerEventType.WORKFLOW_START, {"input": initial_input[:100]})
         
-        # Executar workflow
-        # O input inicial é passado como mensagem de usuário
-        # Workflow.run(message=...) retorna WorkflowRunResult
-        result = await self._workflow.run(message=initial_input)
+        # Registrar captura de respostas via EventBus
+        self._last_agent_response = None
+        self._response_subscription_id = self._event_bus.subscribe(
+            WorkerEventType.AGENT_RESPONSE, 
+            self._capture_agent_response
+        )
         
-        # Processar resultado
-        outputs = result.get_outputs()
-        
-        if outputs:
-            # Se o output for uma lista de ChatMessage (comum em Sequential/Concurrent)
-            final_output = outputs[-1]
+        try:
+            # Executar workflow
+            result = await self._workflow.run(message=initial_input)
             
-            if isinstance(final_output, list):
-                # Pode ser uma lista de mensagens
-                # Filtrar objetos que parecem mensagens
-                messages = [m for m in final_output if hasattr(m, 'content') or hasattr(m, 'text')]
-                
-                if messages:
-                    # Retornar o conteúdo da última mensagem
-                    last_msg = messages[-1]
-                    if hasattr(last_msg, 'text') and getattr(last_msg, 'text', None):
-                        return getattr(last_msg, 'text')
-                    elif hasattr(last_msg, 'content'):
-                        return str(getattr(last_msg, 'content'))
+            # Processar resultado
+            outputs = result.get_outputs()
+            
+            if outputs:
+                # Normalizar outputs para uma lista plana de mensagens
+                all_messages = []
+                for item in outputs:
+                    if isinstance(item, list):
+                        all_messages.extend(item)
                     else:
-                        return str(last_msg)
+                        all_messages.append(item)
+
+                # Retornar o texto da última mensagem válida
+                if all_messages:
+                    last_msg = all_messages[-1]
+                    final_result = getattr(last_msg, 'text', None) or getattr(last_msg, 'content', None) or str(last_msg)
+                    self._emit(WorkerEventType.WORKFLOW_COMPLETE, {"result": str(final_result)})
+                    self.state_manager.set_status("completed")
+                    return final_result
             
-            # Se for um único objeto ChatMessage
-            if hasattr(final_output, 'text') and getattr(final_output, 'text', None):
-                return getattr(final_output, 'text')
-            elif hasattr(final_output, 'content'):
-                return str(getattr(final_output, 'content'))
-                
-            return final_output
-        
-        if not outputs:
-            # Debug: Se não houver outputs explícitos, tentar extrair do histórico de eventos
-            # Procurar por eventos de conclusão de agente
-            # print("⚠️ Nenhum output explícito (yield_output) encontrado. Inspecionando eventos...")
+            # Fallback 1: Usar última resposta capturada pelo EventBus
+            if self._last_agent_response:
+                self._emit(WorkerEventType.WORKFLOW_COMPLETE, {"result": str(self._last_agent_response)})
+                self.state_manager.set_status("completed")
+                return self._last_agent_response
+            
+            # Fallback 2: Inspecionar eventos do resultado se não houver outputs explícitos
             last_response = None
             
-            # result é uma lista de eventos
             for event in result:
-                # print(f"DEBUG: Event type: {type(event).__name__}")
                 if isinstance(event, AgentRunEvent):
-                    # print(f"DEBUG: AgentRunEvent for {event.executor_id}")
                     if hasattr(event, "data"):
                         data = event.data
-                        # print(f"DEBUG: Data type: {type(data)}")
                         if hasattr(data, "value") and getattr(data, "value", None):
                             last_response = getattr(data, "value")
                         elif hasattr(data, "messages") and getattr(data, "messages", None):
@@ -290,22 +209,22 @@ class WorkflowEngine:
                                 last_response = msgs
                         else:
                             last_response = str(data)
-                elif isinstance(event, ExecutorCompletedEvent):
-                    # Fallback se AgentRunEvent não tiver dados (ex: HumanAgent customizado)
-                    if hasattr(event, "data") and event.data is not None:
-                         # Lógica similar...
-                         pass
             
             if last_response:
+                self._emit(WorkerEventType.WORKFLOW_COMPLETE, {"result": str(last_response)})
+                self.state_manager.set_status("completed")
                 return str(last_response)
-                
+            
+            self._emit(WorkerEventType.WORKFLOW_COMPLETE, {"result": ""})
+            self.state_manager.set_status("completed")
             return "Nenhum output gerado pelo workflow."
             
-        # Retornar o último output ou todos
-        return outputs[-1]
-
-        # Fallback para o runner nativo do framework se implementado
-        if self._workflow:
-            return await self._workflow.run(initial_input)
-        else:
-            raise NotImplementedError(f"Workflow type '{self.config.workflow.type}' not supported in manual mode and build failed.")
+        except Exception as e:
+            self.state_manager.set_status("failed")
+            self._emit(WorkerEventType.WORKFLOW_ERROR, {"error": str(e)})
+            raise
+        finally:
+            # Limpar subscription
+            if self._response_subscription_id:
+                self._event_bus.unsubscribe(self._response_subscription_id)
+            self.teardown()

@@ -2,6 +2,266 @@
 
 Todos os marcos notáveis deste projeto serão documentados neste arquivo.
 
+## [0.14.0] - 2025-11-27
+
+### Worker SDK - Maximização do Framework Microsoft (Fase 7.11)
+
+> **Objetivo**: Utilizar ao máximo os recursos nativos do framework, eliminando código redundante e adicionando novas capacidades.
+
+#### Adicionado
+- **MagenticStrategy (`src/worker/strategies/magentic.py`)**:
+  - Nova strategy para orquestração AI-driven avançada.
+  - Planejamento dinâmico via Task Ledger.
+  - Replanning adaptativo quando encontra obstáculos.
+  - Suporte a revisão humana do plano (`enable_plan_review`).
+  - Checkpointing para persistência de estado.
+
+- **Exemplo Magentic (`exemplos/workflows/magentic_research.json`)**:
+  - Workflow de equipe de pesquisa (Researcher, Analyst, Writer).
+  - Demonstra orquestração inteligente com GPT-4o como manager.
+
+- **Ferramentas com `@ai_function`**:
+  - `ferramentas/basicas.py`: Todas as ferramentas agora usam `@ai_function`.
+  - `mock_tools/basic.py`: Migrado para decorador nativo do framework.
+  - Schema JSON gerado automaticamente pelo framework.
+  - Validação Pydantic nativa.
+
+#### Alterado
+- **ToolFactory (`src/worker/factory.py`)**:
+  - Detecta `AIFunction` e cria wrapper com observabilidade.
+  - Mantém emissão de eventos `TOOL_CALL_START`, `TOOL_CALL_COMPLETE`, `TOOL_CALL_ERROR`.
+  - Log informativo quando usa ferramenta nativa.
+
+- **StrategyRegistry (`src/worker/strategies/registry.py`)**:
+  - Registra `MagenticStrategy` como tipo "magentic".
+  - Total de 6 strategies disponíveis.
+
+#### Corrigido
+- **Truncamento de Saída Removido**:
+  - `src/worker/engine.py`: Removidos 3 truncamentos `[:500]` no resultado final.
+  - `src/worker/reporters/console.py`: Removidos truncamentos de ferramentas e workflow.
+  - Saída completa agora exibida sem cortes.
+
+- **Observabilidade de Ferramentas `@ai_function`**:
+  - Ferramentas convertidas para `@ai_function` agora emitem eventos corretamente.
+  - Wrapper criado para manter logging e eventos do EventBus.
+
+#### Impacto
+- **Alinhamento**: Padrão `@ai_function` oficial do Microsoft Agent Framework.
+- **Novidade**: Orquestração Magentic One agora disponível.
+- **Observabilidade**: Ferramentas nativas mantêm logging visual.
+
+## [0.13.0] - 2025-11-27
+
+### Worker SDK - Alinhamento com Microsoft Agent Framework (Fase 7.10)
+
+> **Análise Profunda**: Pesquisa exaustiva do código-fonte do framework para identificar redundâncias e oportunidades de simplificação.
+
+#### Adicionado
+- **Documento de Análise (`docs/ANALISE_FRAMEWORK.md`)**:
+  - Comparação completa entre nossa implementação e o framework Microsoft.
+  - Identificação de recursos subutilizados (MagenticBuilder, @executor decorator).
+  - Recomendações de refatoração priorizadas.
+
+- **Executors Funcionais (`src/worker/strategies/executors.py`)**:
+  - `yield_agent_response`: Executor terminal usando `@executor` decorator (padrão oficial).
+  - `yield_string_output`: Executor para strings diretas.
+  - `yield_any_output`: Executor genérico para qualquer tipo de dados.
+  - Alinhamento total com padrões do framework Microsoft.
+
+- **Observabilidade de Agentes Standalone**:
+  - Eventos `AGENT_RUN_START` e `AGENT_RUN_COMPLETE` em `WorkerEventType`.
+  - `AgentRunner` agora emite eventos de ciclo de vida consistentes.
+  - Visual de execução estilo CrewAI com painéis rich.
+
+#### Alterado
+- **RouterStrategy (`src/worker/strategies/router.py`)**:
+  - Refatorado para usar `yield_agent_response` (decorator `@executor`).
+  - Removida classe `OutputExecutor` em favor de função decorada.
+  - Código mais conciso e alinhado com exemplos oficiais do framework.
+
+- **ConsoleReporter (`src/worker/reporters/console.py`)**:
+  - Handlers para novos eventos de agente standalone.
+  - Saída visual unificada para agentes e workflows.
+
+- **Engine (`src/worker/engine.py`)**:
+  - Captura de última resposta via EventBus como fallback.
+  - Melhor tratamento de outputs de workflows com edges sem saída.
+
+#### Descobertas da Análise
+- **Uso Correto**: SequentialBuilder, ConcurrentBuilder, GroupChatBuilder, HandoffBuilder.
+- **Subutilizado**: MagenticBuilder para orquestração AI-driven avançada.
+- **Redundante**: EventMiddleware (framework tem eventos nativos).
+- **Oportunidade**: Converter ferramentas locais para `@ai_function`.
+
+## [0.12.0] - 2025-11-27
+
+### Worker SDK - Robustez e Padrões Avançados (Fase 7.7 e 7.9)
+
+> **Marco Atingido**: O Worker agora é um SDK genérico, desacoplado e extensível, cumprindo os objetivos da Fase 7.
+
+#### Adicionado
+- **Gestão de Estado (`src/worker/state.py`)**:
+  - `WorkflowStateManager`: Gerenciador centralizado de estado da execução.
+  - Suporte a contexto global, histórico de execução e snapshots.
+  - Integração com `WorkflowEngine` para ciclo de vida (`setup`, `teardown`).
+
+- **Higiene de Mensagens (`src/worker/middleware/hygiene.py`)**:
+  - `MessageSanitizerMiddleware`: Middleware para sanitização de histórico de mensagens.
+  - Previne erros de API garantindo integridade da lista de mensagens antes do envio ao modelo.
+  - Registrado globalmente no `AgentFactory`.
+
+- **Estratégias de Confirmação (`src/worker/strategies/confirmation.py`)**:
+  - `ConfirmationStrategy`: Interface para desacoplar interação humana.
+  - `CLIConfirmationStrategy`: Interação via terminal (padrão).
+  - `StructuredConfirmationStrategy`: Retorno estruturado (JSON) para integração com API/DevUI.
+  - `AutoApprovalStrategy`: Aprovação automática para testes.
+
+#### Alterado
+- **Engine (`src/worker/engine.py`)**:
+  - Implementado ciclo de vida completo (`setup`, `run`, `teardown`).
+  - Integração com `WorkflowStateManager` para rastreamento de status (`initialized`, `running`, `completed`, `failed`).
+  - Detecção automática de modo de confirmação para `HumanAgent` baseado em ambiente (`DEVUI_MODE`).
+
+- **Agentes (`src/worker/agents.py`)**:
+  - `HumanAgent` refatorado para usar `ConfirmationStrategy`.
+  - Removida dependência direta de `input()` e `print()`.
+
+- **Configuração (`src/worker/config.py`)**:
+  - Adicionado campo `confirmation_mode` em `AgentConfig`.
+
+## [0.11.0] - 2025-11-26
+
+### Worker SDK - Observabilidade e CLI (Fase 7.6)
+
+#### Adicionado
+- **Sistema de Eventos (`src/worker/events.py`)**:
+  - `get_event_bus()`: Singleton para acesso global ao barramento de eventos.
+  - `emit_simple()`: Helper para emissão simplificada de eventos.
+  - Novos tipos de eventos: `TOOL_CALL_START`, `TOOL_CALL_COMPLETE`, `TOOL_CALL_ERROR`.
+
+- **Middleware (`src/worker/middleware.py`)**:
+  - `EventMiddleware`: Middleware para interceptar execução de agentes e emitir eventos de ciclo de vida.
+
+- **Reporter (`src/worker/reporters/console.py`)**:
+  - `ConsoleReporter`: Visualização rica no terminal usando a biblioteca `rich`.
+  - Exibição estruturada de:
+    - Ciclo de vida do Workflow.
+    - Ativação de Agentes.
+    - Chamadas de Ferramentas (Args e Resultados).
+    - Respostas de Agentes (Markdown renderizado).
+
+#### Alterado
+- **Factory (`src/worker/factory.py`)**:
+  - Injeção automática de `EventMiddleware` na criação de agentes.
+  - Wrapper de ferramentas legacy agora emite eventos de execução.
+
+- **Tools (`src/worker/tools/base.py`)**:
+  - `get_callable()` instrumentado para emitir eventos de execução de ferramentas.
+
+- **CLI (`run.py`)**:
+  - Integração com `ConsoleReporter` para feedback visual detalhado.
+  - Removidos prints de debug redundantes para saída limpa.
+
+## [0.10.0] - 2025-11-26
+
+### Worker SDK - Sistema de Ferramentas e Strategies (Fase 7.4 e 7.5)
+
+#### Adicionado
+- **Sistema de Ferramentas (`src/worker/tools/`)**:
+  - `ToolDefinition`: Modelo Pydantic completo com suporte a parâmetros, retry policy, e metadados.
+  - `ToolParameter`: Definição tipada de parâmetros com conversão para JSON Schema.
+  - `ToolResult`: Resultado padronizado com métricas de execução.
+  - `RetryPolicy`: Política de retry com backoff exponencial configurável.
+  - `ToolExecutionContext`: Contexto de execução com headers, auth, e tracing.
+
+- **Adapters de Ferramentas (`src/worker/tools/adapters/`)**:
+  - `LocalToolAdapter`: Execução de funções Python locais via importlib, com suporte a funções async.
+  - `HttpToolAdapter`: Chamadas HTTP/REST com suporte a aiohttp/httpx, autenticação, e JSONPath.
+  - `McpToolAdapter`: Integração com Model Context Protocol (MCP) servers.
+  - `AdapterRegistry`: Registry para descoberta de adapters por tipo.
+
+- **Registry de Ferramentas (`src/worker/tools/registry.py`)**:
+  - `ToolRegistry`: Registry singleton com validação automática via adapter.
+  - Métodos `register()`, `get_callable()`, `execute()`, `to_openai_functions()`.
+  - Funções de conveniência: `get_tool_registry()`, `register_tool()`, `execute_tool()`.
+
+- **Workflow Strategies (`src/worker/strategies/`)**:
+  - `SequentialStrategy`: Workflow linear com encadeamento de steps.
+  - `ParallelStrategy`: Execução paralela com merge de resultados.
+  - `GroupChatStrategy`: Orquestração de agentes em chat colaborativo.
+  - `HandoffStrategy`: Transferência de contexto entre agentes.
+  - `RouterStrategy`: Roteamento dinâmico baseado em output.
+  - `StrategyRegistry`: Registry com auto-descoberta de strategies.
+
+#### Alterado
+- **Factory (`src/worker/factory.py`)**:
+  - `ToolFactory` refatorado para usar `ToolRegistry` com fallback legacy.
+  - Novo método `register_from_config()` para conversão automática de ToolConfig.
+  - Logging via `logging` module (substituindo prints).
+
+- **Engine (`src/worker/engine.py`)**:
+  - Refatorado para usar `StrategyRegistry` em vez de if/elif monolítico.
+  - Removidas ~150 linhas de código duplicado.
+  - Integração com `SimpleEventBus` para emissão de eventos.
+
+## [0.9.0] - 2025-11-26
+
+### Worker SDK - Arquitetura Genérica (Fase 7)
+
+#### Adicionado
+- **Interfaces e Contratos (`src/worker/interfaces.py`)**:
+  - `LLMProvider(ABC)`: Contrato para provedores de modelo (OpenAI, Azure, Ollama).
+  - `ToolAdapter(ABC)`: Contrato para ferramentas (local, HTTP, MCP).
+  - `WorkflowStrategy(ABC)`: Strategy para builders de workflow.
+  - `EventBus(ABC)`: Sistema de eventos para observabilidade.
+  - `MemoryStore(ABC)`: Interface stub para persistência de contexto.
+  - `WorkerEventType`: Enum com 16 tipos de eventos (lifecycle, prompt, LLM, tools, workflow, agent).
+
+- **Camada de Providers (`src/worker/providers/`)**:
+  - `BaseLLMProvider`: Classe base com utilitários para env vars.
+  - `AzureOpenAIProvider`: Provider para Azure OpenAI Service.
+  - `OpenAIProvider`: Provider para API OpenAI nativa.
+  - `ProviderRegistry`: Registry singleton com auto-descoberta de providers.
+
+- **Camada de Prompts (`src/worker/prompts/`)**:
+  - `PromptTemplate`: Templates com variáveis dinâmicas e validação Pydantic.
+  - `PromptVariable`: Definição tipada de variáveis.
+  - `PromptChain`: Composição de templates em pipeline.
+  - `MessageBuilder`: API fluente para construção de mensagens.
+  - `ConversationalContext`: Gerenciamento de histórico e variáveis de sessão.
+  - `PromptEngine`: Orquestrador de renderização.
+
+- **Sistema de Eventos (`src/worker/events.py`)**:
+  - `SimpleEventBus`: Implementação síncrona do EventBus.
+  - Handlers pré-definidos: `create_logging_handler`, `create_json_handler`, `create_metrics_handler`.
+  - Suporte a wildcard para receber todos os eventos.
+
+- **Configuração (`src/worker/config.py`)**:
+  - `PromptVariableConfig`: Configuração de variáveis de prompt.
+  - `PromptTemplateConfig`: Configuração de templates.
+  - `PromptsConfig`: Configuração completa para WorkerConfig.
+  - Campo `prompts` adicionado ao `WorkerConfig`.
+
+#### Alterado
+- **Factory (`src/worker/factory.py`)**:
+  - Refatorado para usar `ProviderRegistry` em vez de instanciação direta.
+  - Removidas dependências diretas de `OpenAIChatClient` e `AzureOpenAIChatClient`.
+  - Agora totalmente desacoplado do provider específico.
+
+### Documentação
+- `TODO.md` atualizado com Fase 7 completa (7.1, 7.2, 7.3, 7.6).
+- Issues sugeridas para próximas etapas (Strategy Pattern, Tool Registry).
+
+## [0.8.0] - 2025-11-26
+
+### Core Framework Update (v1.0.0b251120)
+- **Dependências:** Atualização forçada para `agent-framework-core==1.0.0b251120` (Commit 907d79a).
+- **Group Chat:** Refatoração do `GroupChatBuilder` para utilizar `set_manager` (novo padrão) com fallback automático para `set_prompt_based_manager` (legacy), garantindo compatibilidade.
+- **Handoff:** Implementação do método `auto_register_handoff_tools(True)` para registro automático de ferramentas de transferência.
+- **Router:** Ajuste no `WorkflowEngine` para processar outputs do tipo `list[ChatMessage]`, substituindo a expectativa anterior de string pura.
+- **Testes:** Adição de `tests/test_group_chat_refactor.py` para validar a lógica de seleção de manager.
+
 ## [0.7.0] - 2025-11-25
 
 ### Adicionado

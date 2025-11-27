@@ -1,0 +1,86 @@
+{
+  "version": "1.0",
+  "name": "Comitê de Análise de Risco",
+  "resources": {
+    "models": {
+      "gpt-4o-mini": {
+        "type": "azure-openai",
+        "deployment": "gpt-4o-mini"
+      }
+    },
+    "tools": [
+      {
+        "id": "calcular_custos",
+        "path": "mock_tools.basic:calcular_custos",
+        "description": "Calcula estimativa de custos operacionais"
+      }
+    ]
+  },
+  "agents": [
+    {
+      "id": "analista_risco",
+      "role": "Analista de Risco",
+      "description": "Avalia riscos operacionais e de mercado.",
+      "model": "gpt-4o-mini",
+      "instructions": "Você é o analista de risco do comitê.\n\nAvalie:\n- Riscos operacionais\n- Exposição financeira\n- Probabilidade de ocorrência\n- Impacto potencial\n\nClassifique o risco geral: ACEITÁVEL, MODERADO, ELEVADO, CRÍTICO\n\nDefenda sua posição tecnicamente.",
+      "tools": ["calcular_custos"]
+    },
+    {
+      "id": "analista_compliance",
+      "role": "Analista de Compliance",
+      "description": "Verifica conformidade regulatória.",
+      "model": "gpt-4o-mini",
+      "instructions": "Você é o analista de compliance do comitê.\n\nVerifique:\n- Conformidade com regulamentações (SUSEP, LGPD)\n- Riscos jurídicos\n- Documentação necessária\n- Restrições aplicáveis\n\nIndique se há IMPEDIMENTOS REGULATÓRIOS.",
+      "tools": []
+    },
+    {
+      "id": "analista_financeiro",
+      "role": "Analista Financeiro",
+      "description": "Avalia viabilidade e impacto financeiro.",
+      "model": "gpt-4o-mini",
+      "instructions": "Você é o analista financeiro do comitê.\n\nCalcule:\n- Impacto no resultado\n- Provisões necessárias\n- ROI esperado\n- Cenários (otimista, realista, pessimista)\n\nUse números e projeções.",
+      "tools": ["calcular_custos"]
+    },
+    {
+      "id": "coordenador",
+      "role": "Coordenador do Comitê",
+      "description": "Consolida as análises e emite parecer final.",
+      "model": "gpt-4o-mini",
+      "instructions": "Você é o coordenador do comitê de análise.\n\nSua função:\n1. Ouvir todos os analistas\n2. Identificar pontos de convergência e divergência\n3. Ponderar os argumentos\n4. Emitir PARECER FINAL: APROVADO, APROVADO COM RESSALVAS, ou REPROVADO\n\nQuando tiver informações suficientes, finalize com: DELIBERAÇÃO ENCERRADA",
+      "tools": []
+    }
+  ],
+  "workflow": {
+    "type": "group_chat",
+    "manager_model": "gpt-4o-mini",
+    "manager_instructions": "Você coordena um comitê de análise de risco.\n\nOrdem de participação:\n1. Primeiro, peça ao analista_risco avaliar\n2. Depois, analista_compliance verificar conformidade\n3. Em seguida, analista_financeiro fazer projeções\n4. Por fim, coordenador consolidar e deliberar\n\nQuando o coordenador disser 'DELIBERAÇÃO ENCERRADA', finalize a discussão.",
+    "max_rounds": 8,
+    "termination_condition": "DELIBERAÇÃO ENCERRADA",
+    "steps": [
+      {
+        "id": "step_risco",
+        "type": "agent",
+        "agent": "analista_risco",
+        "input_template": "{{ input }}"
+      },
+      {
+        "id": "step_compliance",
+        "type": "agent",
+        "agent": "analista_compliance",
+        "input_template": "{{ input }}"
+      },
+      {
+        "id": "step_financeiro",
+        "type": "agent",
+        "agent": "analista_financeiro",
+        "input_template": "{{ input }}"
+      },
+      {
+        "id": "step_coordenador",
+        "type": "agent",
+        "agent": "coordenador",
+        "input_template": "{{ input }}"
+      }
+    ]
+  }
+}
