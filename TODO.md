@@ -134,16 +134,11 @@ Este documento rastrea o progresso detalhado do desenvolvimento do módulo worke
     - [x] Remover instanciação direta de clients
     - [x] Usar `ProviderRegistry.get(type).create_client(config)`
 
-### 7.3 Camada de Mensagens & Prompts (PromptEngine)
-- [x] **Criar `src/worker/prompts/`**
-    - [x] `__init__.py`: Exports públicos
-    - [x] `models.py`: Modelos Pydantic (`PromptTemplate`, `PromptVariable`, `PromptChain`)
-    - [x] `engine.py`: `PromptEngine` para renderização e gestão de templates
-    - [x] `messages.py`: `MessageBuilder` para construção de mensagens estruturadas
-    - [x] `context.py`: `ConversationalContext` para histórico e variáveis dinâmicas
-- [x] **Atualizar `config.py`**
-    - [x] Adicionar `PromptConfig` ao schema
-    - [x] Validação Pydantic estrita para templates
+### 7.3 ~~Camada de Mensagens & Prompts~~ (REMOVIDO)
+> **Nota (27/11/2025):** Esta camada foi **removida** durante auditoria de código.
+> O `agent_framework` nativo já fornece `ChatMessage`, `Role` e `TextContent` em `_types.py`.
+> A implementação customizada era 100% redundante e nunca foi integrada ao projeto.
+> Ver: `docs/RELATORIO_AUDITORIA_CODIGO.md`
 
 ### 7.4 Sistema de Ferramentas Extensível
 - [x] **Criar `src/worker/tools/`**
@@ -264,7 +259,6 @@ Este documento rastrea o progresso detalhado do desenvolvimento do módulo worke
     - [ ] `docs/extending-providers.md`: Como adicionar novos providers
 - [ ] **Testes de Integração**
     - [ ] `tests/test_providers.py`
-    - [ ] `tests/test_prompts.py`
     - [ ] `tests/test_strategies.py`
 
 ### 7.9 Padrões de Design Avançados (Inspirado em AG-UI)

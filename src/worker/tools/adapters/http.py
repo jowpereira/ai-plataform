@@ -53,10 +53,10 @@ class HttpToolAdapter(ToolAdapter):
     
     Exemplo:
         definition = ToolDefinition(
-            name="buscar_cliente",
-            description="Busca dados do cliente",
+            name="fetch_data",
+            description="Fetches data from an external API",
             type=ToolType.HTTP,
-            source="https://crm.api.com/v1/customer",
+            source="https://api.example.com/v1/resource",
             http_config={
                 "method": "GET",
                 "headers": {"X-Api-Key": "{API_KEY}"}

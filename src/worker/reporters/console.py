@@ -93,15 +93,20 @@ class ConsoleReporter:
         timestamp = datetime.fromtimestamp(event.timestamp).strftime("%H:%M:%S")
         
         if event.type == WorkerEventType.WORKFLOW_START:
-            console.print(Panel(f"[bold purple]Iniciando Workflow[/] at {timestamp}", border_style="purple"))
+            console.print()
+            console.print(Panel(
+                "[bold purple]⚡ Iniciando Workflow[/]",
+                subtitle=f"[dim]{timestamp}[/]",
+                border_style="purple"
+            ), justify="center")
             
         elif event.type == WorkerEventType.WORKFLOW_STEP:
             step_id = data.get("step_id", "unknown")
-            console.print(f"[purple]➤ Step: {step_id}[/]")
+            console.print(f"  [dim purple]├─[/] [purple]Step: {step_id}[/] [dim]({timestamp})[/]")
             
         elif event.type == WorkerEventType.AGENT_START:
             agent_name = data.get("agent_name", "unknown")
-            console.print(f"[blue]🤖 Agente Ativado: {agent_name}[/]")
+            console.print(f"  [dim blue]├─[/] [blue]🤖 {agent_name}[/] [dim]({timestamp})[/]")
             
         elif event.type == WorkerEventType.AGENT_RESPONSE:
             agent_name = data.get("agent_name", "unknown")
@@ -109,7 +114,6 @@ class ConsoleReporter:
             
             # Detectar e tratar respostas de streaming
             if self._is_stream_placeholder(content):
-                # Não exibir placeholder de streaming - o resultado final será mostrado
                 return
             
             # Tentar formatar JSON se parecer JSON
@@ -117,47 +121,56 @@ class ConsoleReporter:
                 content_render = JSON.from_data(content)
             else:
                 content_render = str(content)
-                
+            
+            console.print()
             console.print(Panel(
                 content_render,
-                title=f"[blue]{agent_name}[/]",
+                title=f"[blue]💬 {agent_name}[/]",
+                subtitle=f"[dim]{timestamp}[/]",
                 border_style="blue",
-                expand=False
+                expand=False,
+                padding=(0, 1)
             ))
             
         elif event.type == WorkerEventType.TOOL_CALL_START:
             tool = data.get("tool", "unknown")
             args = data.get("arguments", {})
-            console.print(f"[magenta]🛠️  Executando Ferramenta: {tool}[/]")
-            console.print(f"[dim]   Args: {json.dumps(args, ensure_ascii=False)}[/]")
+            console.print(f"  [dim magenta]├─[/] [magenta]🔧 {tool}[/] [dim]({timestamp})[/]")
+            if args:
+                console.print(f"  [dim]│   {json.dumps(args, ensure_ascii=False)[:80]}[/]")
             
         elif event.type == WorkerEventType.TOOL_CALL_COMPLETE:
             tool = data.get("tool", "unknown")
             result = data.get("result", "")
-            
-            result_str = str(result)
-            console.print(f"[green]✅ Ferramenta {tool} concluída[/]")
-            console.print(f"[dim]   Result: {result_str}[/]")
+            result_str = str(result)[:100]
+            console.print(f"  [dim green]├─[/] [green]✓ {tool}[/] [dim]→ {result_str} ({timestamp})[/]")
             
         elif event.type == WorkerEventType.TOOL_CALL_ERROR:
             tool = data.get("tool", "unknown")
             error = data.get("error", "unknown")
-            console.print(f"[bold red]❌ Erro na Ferramenta {tool}: {error}[/]")
+            console.print(f"  [dim red]├─[/] [bold red]✗ {tool}: {error}[/] [dim]({timestamp})[/]")
             
         elif event.type == WorkerEventType.WORKFLOW_COMPLETE:
             result = data.get("result", "")
+            console.print()
             console.print(Panel(
                 str(result),
-                title="[bold green]Workflow Concluído[/]",
-                border_style="green"
+                title="[bold green]📋 RESULTADO FINAL[/]",
+                subtitle=f"[dim]Workflow concluído com sucesso • {timestamp}[/]",
+                border_style="bold green",
+                padding=(1, 2)
             ))
+            console.print()
             
         elif event.type == WorkerEventType.WORKFLOW_ERROR:
             error = data.get("error", "unknown")
+            console.print()
             console.print(Panel(
                 str(error),
-                title="[bold red]Workflow Falhou[/]",
-                border_style="red"
+                title="[bold red]❌ ERRO[/]",
+                subtitle="[dim]Workflow falhou[/]",
+                border_style="bold red",
+                padding=(1, 2)
             ))
             
         # ===== Eventos de Agente Standalone =====
@@ -166,18 +179,45 @@ class ConsoleReporter:
             agent_role = data.get("agent_role", "")
             tools_count = data.get("tools_count", 0)
             
-            header = f"[bold cyan]Iniciando Agente[/] at {timestamp}"
+            info_parts = []
             if agent_role:
-                header += f"\n[dim]Role: {agent_role}[/]"
+                info_parts.append(f"[bold]{agent_role}[/]")
             if tools_count > 0:
-                header += f"\n[dim]Ferramentas: {tools_count}[/]"
-                
-            console.print(Panel(header, title=f"🤖 {agent_name}", border_style="cyan"))
+                info_parts.append(f"[dim]🔧 {tools_count} ferramentas[/]")
+            
+            header = "\n".join(info_parts) if info_parts else "[dim]Processando...[/]"
+            
+            console.print()
+            console.print(Panel(
+                header,
+                title=f"[bold cyan]🤖 {agent_name}[/]",
+                subtitle=f"[dim]{timestamp}[/]",
+                border_style="cyan"
+            ), justify="center")
             
         elif event.type == WorkerEventType.AGENT_RUN_COMPLETE:
             agent_name = data.get("agent_name", "unknown")
-            # Não repetir resultado aqui - AGENT_RESPONSE já mostra
-            console.print(f"[bold green]✅ Agente {agent_name} concluído[/]")
+            result = data.get("result", "")
+            
+            # Exibir resultado do agente standalone
+            if result and not self._is_stream_placeholder(result):
+                if isinstance(result, (dict, list)):
+                    content_render = JSON.from_data(result)
+                else:
+                    content_render = str(result)
+                
+                console.print()
+                console.print(Panel(
+                    content_render,
+                    title=f"[bold green]📋 RESPOSTA[/]",
+                    subtitle=f"[dim]{agent_name} concluído • {timestamp}[/]",
+                    border_style="bold green",
+                    expand=False,
+                    padding=(1, 2)
+                ))
+                console.print()
+            else:
+                console.print(f"  [dim green]└─[/] [green]✓ {agent_name} concluído[/] [dim]({timestamp})[/]")
 
     def _handle_plain(self, event: WorkerEvent) -> None:
         """Renderização simples (fallback)."""
@@ -214,7 +254,14 @@ class ConsoleReporter:
             
         elif event.type == WorkerEventType.AGENT_RUN_COMPLETE:
             agent = event.data.get("agent_name", "unknown")
+            result = event.data.get("result", "")
             print(f"{prefix} ✅ Agente {agent} concluído")
+            if result:
+                print(f"\n{'='*60}")
+                print(f"📝 RESPOSTA:")
+                print(f"{'='*60}")
+                print(result)
+                print(f"{'='*60}\n")
             
         else:
             # Log genérico para outros eventos

@@ -72,26 +72,3 @@ async def yield_any_output(
     await ctx.yield_output(output)
 
 
-# Alias para compatibilidade com código existente
-# DEPRECATED: Usar yield_agent_response diretamente
-class OutputExecutor:
-    """
-    DEPRECATED: Use yield_agent_response function executor.
-    
-    Esta classe existe apenas para compatibilidade.
-    O framework prefere o decorator @executor.
-    """
-    
-    def __init__(self, id: str = "output"):
-        import warnings
-        warnings.warn(
-            "OutputExecutor class is deprecated. Use yield_agent_response executor instead.",
-            DeprecationWarning,
-            stacklevel=2
-        )
-        # Retorna o executor funcional
-        self._executor = yield_agent_response
-    
-    def __getattr__(self, name):
-        return getattr(self._executor, name)
-

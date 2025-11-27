@@ -2,6 +2,56 @@
 
 Todos os marcos notáveis deste projeto serão documentados neste arquivo.
 
+## [0.15.3] - 2025-11-27
+
+### UI do Console Aprimorada
+
+#### Melhorado
+- **ConsoleReporter (`src/worker/reporters/console.py`)**:
+  - Painéis de início (Workflow/Agente) centralizados e destacados
+  - Timestamps em todos os passos da execução
+  - Role do agente em **bold** e centralizado
+  - Diferenciação visual clara entre etapas intermediárias (💬 azul) e resultado final (📋 verde bold)
+  - Subtítulos informativos com horário de conclusão
+  - Ferramentas exibidas de forma compacta com ícone 🔧
+
+---
+
+## [0.15.2] - 2025-11-27
+
+### Auditoria Profunda - Limpeza de Código Morto
+
+#### Removido
+- **`src/worker/prompts/`** — Diretório completo excluído (5 arquivos, ~1.200 linhas):
+  - `__init__.py`, `messages.py`, `models.py`, `engine.py`, `context.py`
+  - Reimplementava tipos já existentes no framework (`ChatMessage`, `Role`, `TextContent`)
+  - Zero referências externas — código 100% morto
+
+- **`OutputExecutor` (class deprecated)**:
+  - Removida de `src/worker/strategies/executors.py`
+  - Substituída pela função `yield_agent_response`
+
+#### Corrigido
+- **ConsoleReporter (`src/worker/reporters/console.py`)**:
+  - Evento `AGENT_RUN_COMPLETE` agora exibe o resultado do agente
+  - Corrige problema onde agentes executavam mas não mostravam output
+  - Fallback plain-text também atualizado
+
+- **Docstring genérica em `http.py`**:
+  - Exemplo `buscar_cliente` substituído por `fetch_data` genérico
+
+#### Validação
+- Testados **7 agentes** standalone — todos funcionando ✅
+- Testados **5 workflows** — 3 funcionando, 2 com problemas pré-existentes ⚠️
+- Relatório completo em `docs/RELATORIO_AUDITORIA_CODIGO.md`
+
+#### Impacto
+- **-32%** linhas de código
+- **-20%** arquivos Python
+- Worker 100% alinhado com tipos nativos do Microsoft Agent Framework
+
+---
+
 ## [0.15.1] - 2025-11-27
 
 ### Correção de Bug - Exibição do Magentic e Captura de Eventos
