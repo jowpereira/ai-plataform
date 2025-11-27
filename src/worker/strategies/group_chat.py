@@ -3,9 +3,17 @@ Strategy para workflows de Group Chat.
 
 Implementa discussão em grupo onde um Manager
 seleciona dinamicamente o próximo participante.
+
+Padrão Microsoft Agent Framework:
+    - Usa GroupChatBuilder.participants(**kwargs) com nomes e descriptions
+    - Manager pode ser ChatAgent ou função de seleção
+    - Orquestrador interno gerencia estado e turnos
+    - Condição de término e max_rounds para controle de loop
+
+Referência: agent_framework/_workflows/_group_chat.py
 """
 
-from typing import Any, List
+from typing import Any, Dict, List
 
 from agent_framework import GroupChatBuilder, ChatMessage, ChatAgent
 
@@ -68,8 +76,16 @@ class GroupChatStrategy(BaseWorkflowStrategy):
         
         builder = GroupChatBuilder()
         
-        # 1. Registrar participantes
-        builder.participants(agents)
+        # 1. Registrar participantes como kwargs nomeados
+        # Padrão do framework: participants(**{name: agent})
+        # Isso permite ao manager usar os nomes exatos na seleção
+        participants_dict: Dict[str, Any] = {}
+        for agent in agents:
+            agent_name = getattr(agent, 'name', None) or getattr(agent, 'id', f'agent_{len(participants_dict)}')
+            participants_dict[agent_name] = agent
+        
+        builder.participants(**participants_dict)
+        self._log(f"Participantes registrados: {list(participants_dict.keys())}")
         
         # 2. Configurar Manager
         manager_model_id = getattr(config, 'manager_model', None)

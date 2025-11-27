@@ -8,6 +8,9 @@ Padrão Microsoft Agent Framework:
     - Usa WorkflowBuilder com add_switch_case_edge_group
     - Executor terminal com @executor decorator
     - Condições via Case/Default
+
+Referência: O framework não tem RouterBuilder dedicado,
+então usamos WorkflowBuilder diretamente seguindo o padrão.
 """
 
 from typing import Any, Dict, List
@@ -103,11 +106,11 @@ class RouterStrategy(BaseWorkflowStrategy):
         # 3. Construir workflow com WorkflowBuilder
         builder = WorkflowBuilder()
         
-        # Adicionar todos os agentes
+        # Adicionar agentes
         for agent in step_agents.values():
             builder.add_agent(agent)
         
-        # Definir start
+        # Definir start como o agente roteador
         builder.set_start_executor(start_agent)
         
         # 4. Criar condições de roteamento

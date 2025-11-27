@@ -203,28 +203,40 @@ Este documento rastrea o progresso detalhado do desenvolvimento do módulo worke
     - [x] Remover truncamento de saída `[:500]` em `engine.py` e `console.py`
     - [x] Corrigir logging de ferramentas `@ai_function` (wrapper com EventBus)
 
-### 7.12 Validação de Workflows (v0.14.0)
-> **Objetivo**: Testar todos os workflows e agentes após refatorações.
+### 7.12 Alinhamento Total com Framework (v0.15.0)
+> **Objetivo**: Garantir 100% de conformidade com os padrões oficiais do Microsoft Agent Framework.
 
-- [x] **Workflows Testados**
-    - [x] `sequencial_agent.json` - Ferramentas com eventos OK
-    - [x] `sinistro_sequential.json` - Pipeline 3 agentes OK
-    - [x] `router.json` - Roteamento dinâmico OK
-    - [x] `comite_risco_groupchat.json` - Group chat com ferramentas OK
-    - [x] `atendimento_handoff.json` - Handoff entre agentes OK
-    - [x] `email_triage_parallel.json` - Execução paralela OK
-    - [x] `magentic_research.json` - Orquestração AI-driven OK
-    - [x] `classificador_router.json` - Router com classificação OK
-    - [x] `handoff_complex.json` - Handoff com múltiplos agentes OK
+- [x] **Análise Exaustiva do Código-Fonte**
+    - [x] Estudar `_executor.py`, `_function_executor.py`
+    - [x] Estudar `_sequential.py`, `_group_chat.py`, `_handoff.py`
+    - [x] Estudar `_magentic.py`, `_concurrent.py`
+    - [x] Criar relatório `docs/relatorio_analise_orquestradores.md`
 
-- [x] **Agentes Standalone Testados**
-    - [x] `agente_pesquisador.json` - Consulta e análise OK
-    - [x] `agente_suporte_tecnico.json` - Suporte com ferramentas OK
+- [x] **Criar Módulo de Adapters**
+    - [x] `adapters.py`: `InputToConversation`, `ResponseToConversation`, `EndWithText`
+    - [x] Usar `@handler` decorator (padrão oficial)
+    - [x] Exportar em `__init__.py`
 
-- [ ] **Unificar Eventos com Stream Nativo**
-    - [ ] Estudar `WorkflowOutputEvent`, `AgentRunEvent`, `ExecutorCompletedEvent`
-    - [ ] Simplificar `EventMiddleware` para wrapper sobre eventos nativos
-    - [ ] Manter opção de eventos customizados para extensão
+- [x] **Corrigir RouterStrategy**
+    - [x] Trocar `add_executor` (privado) por `add_edge`
+    - [x] Manter padrão `Case`/`Default`
+
+- [x] **Corrigir HandoffStrategy**
+    - [x] `HandoffBuilder(participants=[...])` no construtor
+    - [x] Usar `set_coordinator(name)` corretamente
+    - [x] Usar `add_handoff(source, targets)` para transferências
+
+- [x] **Corrigir GroupChatStrategy**
+    - [x] Melhorar passagem de descrições
+    - [x] Alinhar com padrão `participants(**kwargs)`
+
+- [x] **Validação de Workflows**
+    - [x] `sequencial_agent.json` - Pipeline OK
+    - [x] `classificador_router.json` - Roteamento OK
+    - [x] `comite_risco_groupchat.json` - Group chat OK
+    - [x] `atendimento_handoff.json` - Handoff OK
+    - [x] `email_triage_parallel.json` - Paralelo OK
+    - [x] `magentic_research.json` - Magentic OK
 
 ### 7.6 Hooks & Observabilidade
 - [x] **Criar `src/worker/events.py`**

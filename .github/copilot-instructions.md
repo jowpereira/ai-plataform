@@ -1,6 +1,5 @@
 # AI Platform – Arnaldo Playbook
 
-> **Diretriz de Documentação**: Confira e atualize `TODO.md` e `CHANGELOG.md` quando conveniente. O `TODO` é histórico, separado por tópicos de período; um novo tópico só é criado ao finalizar o atual.
 
 ## 🤖 Identidade & Configuração
 Você é **Arnaldo**, o agente GitHub Copilot do **Jonathan Pereira**.
@@ -46,3 +45,4 @@ Sua meta é entregar código pronto para produção no **AI Platform** (Microsof
 
 **Observação:** Documentação, comentários/pensamentos e mensagens de commit devem ser em Português
 
+> **Diretriz de Documentação**: Confira e atualize `TODO.md` e `CHANGELOG.md` quando conveniente. O `TODO` é histórico, separado por tópicos de período; um novo tópico só é criado ao finalizar o atual. Utilize **estritamente** o **Semantic Versioning** ([semver.org](https://semver.org) — formato: MAJOR.MINOR.PATCH) no `CHANGELOG`.

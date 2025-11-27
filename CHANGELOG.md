@@ -2,6 +2,55 @@
 
 Todos os marcos notáveis deste projeto serão documentados neste arquivo.
 
+## [0.15.0] - 2025-11-27
+
+### Worker SDK - Alinhamento Total com Microsoft Agent Framework (Fase 7.12)
+
+> **Objetivo**: Garantir 100% de conformidade com os padrões oficiais do Microsoft Agent Framework após análise exaustiva do código-fonte.
+
+#### Adicionado
+- **Módulo de Adapters (`src/worker/strategies/adapters.py`)**:
+  - `InputToConversation`: Executor para normalizar input em mensagem de conversa.
+  - `ResponseToConversation`: Executor para converter AgentResponse em conversa.
+  - `EndWithText`: Executor terminal que extrai texto da resposta.
+  - Seguem padrão oficial do framework com `@handler` decorator.
+
+- **Relatório de Análise (`docs/relatorio_analise_orquestradores.md`)**:
+  - Análise completa de todos os builders do framework.
+  - Comparação linha-a-linha com nossa implementação.
+  - Conformidade atualizada para 100% em todas as strategies.
+
+#### Corrigido
+- **RouterStrategy (`src/worker/strategies/router.py`)**:
+  - Corrigido uso de `add_executor` (método privado) para `add_edge`.
+  - WorkflowBuilder agora usa API pública corretamente.
+  - Padrão `Case`/`Default` implementado conforme framework.
+
+- **HandoffStrategy (`src/worker/strategies/handoff.py`)**:
+  - Refatorado para usar API correta do HandoffBuilder.
+  - `participants` agora passado no construtor.
+  - Método `set_coordinator(name)` usado corretamente.
+  - `add_handoff(source, targets)` para definir transferências.
+
+- **GroupChatStrategy (`src/worker/strategies/group_chat.py`)**:
+  - Melhorada passagem de descrições dos participantes.
+  - Alinhado com padrão `participants(**kwargs)`.
+
+#### Testado
+- ✅ `sequencial_agent.json` - Pipeline sequencial funcionando.
+- ✅ `classificador_router.json` - Roteamento por classificação funcionando.
+- ✅ `comite_risco_groupchat.json` - Conversa em grupo com 4 agentes.
+- ✅ `atendimento_handoff.json` - Handoff triagem→suporte funcionando.
+- ✅ `email_triage_parallel.json` - Execução paralela de 3 agentes.
+- ✅ `magentic_research.json` - Orquestração AI-driven funcionando.
+
+#### Impacto
+- **Conformidade**: Todas as 6 strategies agora 100% alinhadas ao framework.
+- **Manutenibilidade**: Código mais limpo seguindo padrões oficiais.
+- **Estabilidade**: Testes validaram todos os workflows principais.
+
+---
+
 ## [0.14.0] - 2025-11-27
 
 ### Worker SDK - Maximização do Framework Microsoft (Fase 7.11)
