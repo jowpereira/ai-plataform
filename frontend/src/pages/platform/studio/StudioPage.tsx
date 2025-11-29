@@ -35,6 +35,7 @@ import {
   GroupChatEditor,
   HandoffEditor,
   RouterEditor,
+  MagenticEditor,
 } from "@/components/features/studio";
 import type { WorkflowType, AgentConfig, WorkflowStep } from "@/components/features/studio/types";
 import { 
@@ -155,6 +156,15 @@ export default function StudioPage() {
     termination_condition: (workerConfig.workflow as any).termination_condition,
   }), [workerConfig.workflow, availableModels]);
 
+  // Magentic One config (extrair de workerConfig.workflow ou usar defaults)
+  const magenticConfig = useMemo(() => ({
+    manager_model: (workerConfig.workflow as any).manager_model || Object.keys(availableModels)[0] || "gpt-4o-mini",
+    manager_instructions: (workerConfig.workflow as any).manager_instructions || "Você é o coordenador de uma equipe de especialistas. Analise a tarefa, crie um plano de execução e coordene os participantes para alcançar o objetivo de forma eficiente.",
+    max_rounds: (workerConfig.workflow as any).max_rounds || 20,
+    max_stall_count: (workerConfig.workflow as any).max_stall_count || 3,
+    enable_plan_review: (workerConfig.workflow as any).enable_plan_review || false,
+  }), [workerConfig.workflow, availableModels]);
+
   // Handlers
   const handleWorkflowTypeChange = useCallback((type: WorkflowType) => {
     setWorkerConfig({
@@ -196,6 +206,24 @@ export default function StudioPage() {
   }
 
   const handleGroupChatConfigChange = useCallback((config: GroupChatConfig) => {
+    setWorkerConfig({
+      ...workerConfig,
+      workflow: {
+        ...workerConfig.workflow,
+        ...config,
+      } as any,
+    });
+  }, [workerConfig, setWorkerConfig]);
+
+  interface MagenticConfigType {
+    manager_model: string;
+    manager_instructions: string;
+    max_rounds: number;
+    max_stall_count: number;
+    enable_plan_review: boolean;
+  }
+
+  const handleMagenticConfigChange = useCallback((config: MagenticConfigType) => {
     setWorkerConfig({
       ...workerConfig,
       workflow: {
@@ -253,8 +281,20 @@ export default function StudioPage() {
         errors.push(`Step ${i + 1} referencia agente inexistente`);
       }
     });
+    // Validação específica para Magentic
+    if (workflowType === "magentic") {
+      if (!magenticConfig.manager_model) {
+        errors.push("Magentic requer 'manager_model' definido");
+      }
+      if (steps.length < 2) {
+        errors.push("Magentic é mais efetivo com 2+ participantes");
+      }
+      if (magenticConfig.max_rounds < 5) {
+        errors.push(`max_rounds=${magenticConfig.max_rounds} pode ser insuficiente. Considere aumentar para 10+`);
+      }
+    }
     return errors;
-  }, [workerConfig.name, agents, steps]);
+  }, [workerConfig.name, agents, steps, workflowType, magenticConfig]);
 
   const handleSave = async () => {
     // Validar antes de salvar
@@ -384,6 +424,18 @@ export default function StudioPage() {
             startStep={startStep}
             onStepsChange={handleStepsChange}
             onStartStepChange={handleStartStepChange}
+            onCreateAgent={() => setShowAgentModal(true)}
+          />
+        );
+      case "magentic":
+        return (
+          <MagenticEditor
+            steps={steps}
+            agents={agents}
+            availableModels={availableModels}
+            config={magenticConfig}
+            onStepsChange={handleStepsChange}
+            onConfigChange={handleMagenticConfigChange}
             onCreateAgent={() => setShowAgentModal(true)}
           />
         );

@@ -110,6 +110,12 @@ def run(
         "--stream/--no-stream",
         help="Usa streaming (ainvoke) ou execução direta (invoke). Streaming mostra respostas de cada agente.",
     ),
+    debug: bool = typer.Option(
+        False,
+        "--debug",
+        "-d",
+        help="Habilita logging detalhado de eventos do framework",
+    ),
 ):
     """
     Executa o worker genérico.
@@ -123,6 +129,16 @@ def run(
     """
     # Carregar variáveis de ambiente
     load_dotenv()
+    
+    # Configurar nível de logging
+    if debug:
+        logging.basicConfig(
+            level=logging.DEBUG,
+            format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+        )
+        # Habilitar debug do worker
+        logging.getLogger("worker").setLevel(logging.DEBUG)
+        print("🔍 Modo DEBUG habilitado")
 
     if dev_ui:
         # --- MODO UI ---

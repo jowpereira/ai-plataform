@@ -8,7 +8,7 @@ from agent_framework import ChatAgent
 
 from src.worker.config import AgentConfig, ModelConfig, ToolConfig, WorkerConfig
 from src.worker.providers import ProviderRegistry
-from src.worker.tools import ToolRegistry, ToolDefinition, ToolType
+from src.worker.tools import ToolRegistry, ToolDefinition, ToolType, ApprovalMode
 from src.worker.middleware import EventMiddleware
 from src.worker.middleware.hygiene import MessageSanitizerMiddleware
 
@@ -65,6 +65,17 @@ class ToolFactory:
         if registry.exists(tool_config.id):
             logger.debug(f"Carregando ferramenta '{tool_config.id}' via ToolRegistry")
             return registry.get_callable(tool_config.id)
+            
+        # Tentar registrar automaticamente se for Hosted
+        if (tool_config.hosted_config or 
+            tool_config.path.startswith("hosted://")):
+            try:
+                logger.debug(f"Registrando ferramenta '{tool_config.id}' automaticamente")
+                ToolFactory.register_from_config(tool_config)
+                if registry.exists(tool_config.id):
+                    return registry.get_callable(tool_config.id)
+            except Exception as e:
+                logger.warning(f"Falha ao registrar ferramenta automática '{tool_config.id}': {e}")
         
         # Fallback: modo legacy via importlib
         logger.debug(f"Carregando ferramenta '{tool_config.id}' via importlib (legacy)")
@@ -207,22 +218,35 @@ class ToolFactory:
         # Determinar tipo baseado no path
         path = tool_config.path
         
-        if path.startswith(("http://", "https://")):
-            tool_type = ToolType.HTTP
-            source = path
-        elif path.startswith("mcp://"):
-            tool_type = ToolType.MCP
+        if tool_config.hosted_config or path.startswith("hosted://"):
+            tool_type = ToolType.HOSTED
             source = path
         else:
             # Assumir local (module:function -> module.function)
             tool_type = ToolType.LOCAL
             source = path.replace(":", ".")
         
+        # Converter string de config para Enum
+        approval_mode = ApprovalMode.NEVER
+        if tool_config.approval_mode:
+            try:
+                # Mapear valores do config (always, never, custom) para Enum
+                mode_map = {
+                    "always": ApprovalMode.ALWAYS,
+                    "never": ApprovalMode.NEVER,
+                    "custom": ApprovalMode.CONDITIONAL
+                }
+                approval_mode = mode_map.get(tool_config.approval_mode, ApprovalMode.NEVER)
+            except (ValueError, KeyError):
+                pass
+        
         definition = ToolDefinition(
             name=tool_config.id,
             description=tool_config.description or f"Ferramenta {tool_config.id}",
             type=tool_type,
             source=source,
+            approval_mode=approval_mode,
+            hosted_config=tool_config.hosted_config
         )
         
         cls.register_tool(definition)
@@ -306,12 +330,34 @@ class AgentFactory:
 
         # Carregar Tools
         loaded_tools = []
+        has_hosted_tools = False
+        hosted_tool_names = []
+        
         for tool_id in agent_conf.tools:
             if tool_id not in self.tool_map:
                 raise ValueError(f"Ferramenta '{tool_id}' referenciada pelo agente '{agent_id}' não encontrada nos recursos")
             
             tool_config = self.tool_map[tool_id]
-            loaded_tools.append(ToolFactory.load_tool(tool_config))
+            tool = ToolFactory.load_tool(tool_config)
+            
+            # Detectar Hosted Tools
+            tool_type_name = type(tool).__name__
+            if "Hosted" in tool_type_name:
+                has_hosted_tools = True
+                hosted_tool_names.append(tool_id)
+            
+            loaded_tools.append(tool)
+        
+        # Alertar se Hosted Tools com cliente que não suporta
+        if has_hosted_tools:
+            client_type = type(client).__name__
+            if "ChatClient" in client_type and "Agent" not in client_type:
+                logger.warning(
+                    f"⚠️ Agente '{agent_id}' usa Hosted Tools ({hosted_tool_names}) com {client_type}. "
+                    f"Hosted Tools (code_interpreter, web_search, file_search) requerem "
+                    f"Azure AI Agent Service (AzureAIAgentClient), não Azure OpenAI Chat. "
+                    f"As ferramentas serão IGNORADAS pelo modelo."
+                )
 
         agent_name = agent_conf.id
         display_name = agent_conf.role or agent_conf.id

@@ -57,7 +57,7 @@ export interface WorkflowEdge {
 
 // Tipos de workflow suportados (builders de alto nível)
 // TODO: Reativar DAG quando validação estiver pronta
-export type WorkflowType = "sequential" | "parallel" | "router" | "group_chat" | "handoff";
+export type WorkflowType = "sequential" | "parallel" | "router" | "group_chat" | "handoff" | "magentic";
 
 // Mantido para compatibilidade futura - não usar diretamente
 // export type WorkflowTypeWithDag = WorkflowType | "dag";

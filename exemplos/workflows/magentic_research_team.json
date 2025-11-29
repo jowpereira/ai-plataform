@@ -1,0 +1,86 @@
+{
+  "id": "magentic-research-team",
+  "name": "Magentic One - Equipe de Pesquisa",
+  "description": "Orquestração Magentic One com Researcher (Web Search) e Coder (Code Interpreter)",
+  "version": "1.0",
+  "resources": {
+    "models": {
+      "gpt-4o-mini": {
+        "type": "azure-openai",
+        "deployment": "gpt-4o-mini"
+      }
+    },
+    "tools": [
+      {
+        "id": "pesquisar_web",
+        "path": "ferramentas.web_search:pesquisar_web",
+        "description": "Busca informações na web usando DuckDuckGo"
+      },
+      {
+        "id": "buscar_noticias",
+        "path": "ferramentas.web_search:buscar_noticias",
+        "description": "Busca notícias recentes sobre um tópico"
+      },
+      {
+        "id": "executar_codigo",
+        "path": "ferramentas.code_interpreter:executar_codigo",
+        "description": "Executa código Python em ambiente sandbox seguro"
+      },
+      {
+        "id": "analisar_dados",
+        "path": "ferramentas.code_interpreter:analisar_dados",
+        "description": "Analisa uma lista de dados numéricos"
+      }
+    ]
+  },
+  "agents": [
+    {
+      "id": "web_researcher",
+      "role": "Pesquisador Web",
+      "description": "Especialista em pesquisar informações na internet",
+      "model": "gpt-4o-mini",
+      "instructions": "Você é um pesquisador web especialista. Use pesquisar_web para encontrar informações e buscar_noticias para notícias recentes. Sempre sintetize os resultados de forma clara.",
+      "tools": ["pesquisar_web", "buscar_noticias"]
+    },
+    {
+      "id": "data_coder",
+      "role": "Programador de Dados",
+      "description": "Especialista em análise de dados e programação Python",
+      "model": "gpt-4o-mini",
+      "instructions": "Você é um programador Python especialista em análise de dados. Use executar_codigo para rodar código e analisar_dados para estatísticas. Sempre mostre o código e explique os resultados.",
+      "tools": ["executar_codigo", "analisar_dados"]
+    },
+    {
+      "id": "synthesizer",
+      "role": "Sintetizador",
+      "description": "Especialista em consolidar informações e gerar relatórios",
+      "model": "gpt-4o-mini",
+      "instructions": "Você consolida as informações coletadas pelo pesquisador e analisadas pelo programador. Gere resumos executivos claros e acionáveis.",
+      "tools": []
+    }
+  ],
+  "workflow": {
+    "type": "magentic",
+    "manager_model": "gpt-4o-mini",
+    "max_rounds": 15,
+    "max_stall_count": 3,
+    "manager_instructions": "Você é o Orquestrador Magentic One. Sua missão é coordenar a equipe:\n\n1. **web_researcher**: Buscar informações atuais na internet\n2. **data_coder**: Processar dados, fazer cálculos ou análises\n3. **synthesizer**: Consolidar descobertas em relatório final\n\nComece entendendo o que o usuário precisa, delegue tarefas e finalize com síntese.",
+    "steps": [
+      {
+        "id": "step_researcher",
+        "type": "agent",
+        "agent": "web_researcher"
+      },
+      {
+        "id": "step_coder",
+        "type": "agent",
+        "agent": "data_coder"
+      },
+      {
+        "id": "step_synth",
+        "type": "agent",
+        "agent": "synthesizer"
+      }
+    ]
+  }
+}

@@ -1,0 +1,56 @@
+{
+  "version": "1.0",
+  "name": "IT Support Automation",
+  "description": "Workflow sequencial automatizado para verificação de sistemas e tickets.",
+  "resources": {
+    "models": {
+      "gpt-4o-mini": {
+        "type": "azure-openai",
+        "deployment": "gpt-4o-mini"
+      }
+    },
+    "tools": [
+      {
+        "id": "verificar_status",
+        "path": "ferramentas.basicas:verificar_status_sistema",
+        "description": "Verifica status do sistema."
+      },
+      {
+        "id": "verificar_resolucao",
+        "path": "ferramentas.basicas:verificar_resolucao",
+        "description": "Verifica resolução de ticket."
+      }
+    ]
+  },
+  "agents": [
+    {
+      "id": "sysadmin",
+      "role": "Administrador de Sistemas",
+      "model": "gpt-4o-mini",
+      "instructions": "Você é um sysadmin. Use suas ferramentas para verificar o status dos sistemas e tickets.",
+      "tools": ["verificar_status", "verificar_resolucao"]
+    },
+    {
+      "id": "reporter",
+      "role": "Relator Técnico",
+      "model": "gpt-4o-mini",
+      "instructions": "Você gera relatórios técnicos baseados nas informações fornecidas.",
+      "tools": []
+    }
+  ],
+  "workflow": {
+    "type": "sequential",
+    "steps": [
+      {
+        "id": "check_prod",
+        "agent": "sysadmin",
+        "input_template": "Verifique o status do sistema 'prod-db' e depois verifique a resolução do ticket 'TICKET-99'. {{user_input}}"
+      },
+      {
+        "id": "report",
+        "agent": "reporter",
+        "input_template": "Gere um relatório técnico curto com base nestas informações: {{previous_output}}"
+      }
+    ]
+  }
+}

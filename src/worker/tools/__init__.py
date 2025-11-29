@@ -31,13 +31,14 @@ from src.worker.tools.models import (
     RetryPolicy,
     ToolExecutionContext,
     ToolType,
+    ApprovalMode,
+    HostedToolType,
 )
 from src.worker.tools.base import ToolAdapter
 from src.worker.tools.registry import ToolRegistry
 from src.worker.tools.adapters import (
     LocalToolAdapter,
-    HttpToolAdapter,
-    McpToolAdapter,
+    HostedToolAdapter,
 )
 
 __all__ = [
@@ -48,12 +49,13 @@ __all__ = [
     "RetryPolicy",
     "ToolExecutionContext",
     "ToolType",
+    "ApprovalMode",
+    "HostedToolType",
     # Base
     "ToolAdapter",
     # Registry
     "ToolRegistry",
     # Adapters
     "LocalToolAdapter",
-    "HttpToolAdapter",
-    "McpToolAdapter",
+    "HostedToolAdapter",
 ]

@@ -28,6 +28,7 @@
   ],
   "workflow": {
     "type": "group_chat",
+    "manager_model": "gpt-4o-mini",
     "manager_instructions": "Você é um orquestrador. Regras:\n1. Se o histórico estiver vazio ou só tiver o usuário, chame 'researcher'.\n2. Se o 'researcher' já falou, chame 'writer'.\n3. Se o 'writer' já falou, NÃO chame ninguém (o chat deve encerrar).\nNUNCA chame o 'researcher' depois que ele já tiver falado.",
     "termination_condition": "FIM_DO_CHAT",
     "steps": [

@@ -1,0 +1,69 @@
+{
+  "id": "magentic-code-interpreter",
+  "name": "Magentic One com Code Interpreter",
+  "description": "Exemplo de Magentic One usando Code Interpreter e Web Search locais",
+  "resources": {
+    "models": {
+      "gpt-4o-mini": {
+        "type": "azure-openai",
+        "deployment": "gpt-4o-mini"
+      }
+    },
+    "tools": [
+      {
+        "id": "executar_codigo",
+        "path": "ferramentas.code_interpreter:executar_codigo",
+        "description": "Executa código Python para resolver problemas complexos"
+      },
+      {
+        "id": "calcular",
+        "path": "ferramentas.code_interpreter:calcular",
+        "description": "Calcula expressões matemáticas simples"
+      },
+      {
+        "id": "pesquisar_web",
+        "path": "ferramentas.web_search:pesquisar_web",
+        "description": "Busca informações na web usando DuckDuckGo"
+      },
+      {
+        "id": "buscar_documentacao",
+        "path": "ferramentas.web_search:buscar_documentacao",
+        "description": "Busca documentação técnica"
+      }
+    ]
+  },
+  "agents": [
+    {
+      "id": "coder",
+      "role": "Coder",
+      "model": "gpt-4o-mini",
+      "instructions": "Você é um programador Python especialista. Use executar_codigo para rodar código Python e resolver problemas. Use calcular para expressões simples. Sempre mostre o código e verifique o resultado.",
+      "tools": ["executar_codigo", "calcular"]
+    },
+    {
+      "id": "researcher",
+      "role": "Researcher",
+      "model": "gpt-4o-mini",
+      "instructions": "Você é um pesquisador web. Use pesquisar_web para encontrar informações na internet. Use buscar_documentacao para encontrar docs técnicas. Sintetize os resultados de forma clara.",
+      "tools": ["pesquisar_web", "buscar_documentacao"]
+    }
+  ],
+  "workflow": {
+    "type": "magentic",
+    "manager_model": "gpt-4o-mini",
+    "max_rounds": 20,
+    "manager_instructions": "Você é o orquestrador Magentic One. Coordene o Coder e o Researcher para resolver a solicitação do usuário. Se precisar de dados externos, peça ao Researcher. Se precisar processar dados ou calcular, peça ao Coder.",
+    "steps": [
+      {
+        "id": "step_coder",
+        "type": "agent",
+        "agent": "coder"
+      },
+      {
+        "id": "step_researcher",
+        "type": "agent",
+        "agent": "researcher"
+      }
+    ]
+  }
+}

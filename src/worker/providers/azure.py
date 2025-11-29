@@ -79,7 +79,9 @@ class AzureOpenAIProvider(BaseLLMProvider):
         # AzureOpenAIChatClient busca automaticamente do ambiente:
         # - AZURE_OPENAI_ENDPOINT
         # - AZURE_OPENAI_API_KEY (ou usa DefaultAzureCredential)
-        return AzureOpenAIChatClient(deployment_name=config.deployment)
+        # - OPENAI_API_VERSION ou AZURE_OPENAI_API_VERSION
+        api_version = os.getenv("OPENAI_API_VERSION") or os.getenv("AZURE_OPENAI_API_VERSION", "2024-08-01-preview")
+        return AzureOpenAIChatClient(deployment_name=config.deployment, api_version=api_version)
     
     def health_check(self) -> bool:
         """Verifica se as credenciais Azure estão configuradas."""

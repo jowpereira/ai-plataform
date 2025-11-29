@@ -4,10 +4,6 @@
   "description": "Workflow Magentic One com equipe de pesquisa e análise. O manager planeja dinamicamente e coordena os especialistas.",
   "resources": {
     "models": {
-      "gpt-4o": {
-        "type": "azure-openai",
-        "deployment": "gpt-4o"
-      },
       "gpt-4o-mini": {
         "type": "azure-openai",
         "deployment": "gpt-4o-mini"

@@ -8,7 +8,7 @@ Este módulo define os contratos que permitem extensibilidade e desacoplamento:
 - EventBus: Sistema de eventos para observabilidade
 - MemoryStore: Interface para persistência de contexto
 
-Versão: 0.8.0
+Versão: 0.9.0
 """
 
 from abc import ABC, abstractmethod
@@ -42,7 +42,16 @@ class ToolType(str, Enum):
     LOCAL = "local"       # Função Python local
     HTTP = "http"         # Endpoint HTTP/REST
     MCP = "mcp"           # Model Context Protocol
+    HOSTED = "hosted"     # Hosted Tools do Agent Framework
     CUSTOM = "custom"
+
+
+class ApprovalMode(str, Enum):
+    """Modos de aprovação para ferramentas com human-in-the-loop."""
+    NEVER = "never"                    # Nunca requer aprovação
+    ALWAYS = "always_require"          # Sempre requer aprovação
+    ON_FIRST = "on_first_invocation"   # Apenas na primeira chamada
+    CONDITIONAL = "conditional"         # Baseado em condição customizada
 
 
 class WorkerEventType(str, Enum):
@@ -66,21 +75,43 @@ class WorkerEventType(str, Enum):
     TOOL_CALL_START = "tool_call_start"
     TOOL_CALL_COMPLETE = "tool_call_complete"
     TOOL_CALL_ERROR = "tool_call_error"
+    TOOL_APPROVAL_REQUIRED = "tool_approval_required"   # Novo: Aprovação necessária
+    TOOL_APPROVAL_RESPONSE = "tool_approval_response"   # Novo: Resposta da aprovação
     
     # Workflow
     WORKFLOW_START = "workflow_start"
     WORKFLOW_STEP = "workflow_step"
     WORKFLOW_COMPLETE = "workflow_complete"
     WORKFLOW_ERROR = "workflow_error"
+    WORKFLOW_STATUS_CHANGE = "workflow_status_change"   # Novo: Mudança de estado
     
     # Agent
     AGENT_START = "agent_start"
     AGENT_RESPONSE = "agent_response"
     AGENT_HANDOFF = "agent_handoff"
+    AGENT_STREAM_UPDATE = "agent_stream_update"         # Novo: Streaming de tokens
     
     # Standalone Agent Run (para paridade com workflow)
     AGENT_RUN_START = "agent_run_start"     # Header de início de execução
     AGENT_RUN_COMPLETE = "agent_run_complete" # Footer de conclusão
+    
+    # Human-in-the-loop
+    REQUEST_INFO = "request_info"           # Novo: Solicita input do usuário
+    REQUEST_INFO_RESPONSE = "request_info_response"  # Novo: Resposta do usuário
+    
+    # Executor (paridade com framework oficial)
+    EXECUTOR_INVOKED = "executor_invoked"   # Novo: Executor iniciado
+    EXECUTOR_COMPLETED = "executor_completed"  # Novo: Executor finalizado
+
+
+class WorkflowRunState(str, Enum):
+    """Estados de execução do workflow (paridade com framework oficial)."""
+    IDLE = "idle"
+    IN_PROGRESS = "in_progress"
+    IN_PROGRESS_PENDING_REQUESTS = "in_progress_pending_requests"
+    IDLE_WITH_PENDING_REQUESTS = "idle_with_pending_requests"
+    FAILED = "failed"
+    COMPLETED = "completed"
 
 
 @dataclass
@@ -90,6 +121,35 @@ class WorkerEvent:
     timestamp: float = field(default_factory=lambda: __import__("time").time())
     data: Dict[str, Any] = field(default_factory=dict)
     metadata: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class StreamUpdate:
+    """Estrutura para updates de streaming."""
+    agent_name: str
+    delta: str                          # Token/chunk de texto
+    accumulated: str = ""               # Texto acumulado até agora
+    is_complete: bool = False           # Se é o último update
+    token_count: int = 0                # Contagem de tokens
+
+
+@dataclass
+class ApprovalRequest:
+    """Estrutura para solicitação de aprovação de ferramenta."""
+    tool_name: str
+    arguments: Dict[str, Any]
+    description: str
+    request_id: str
+    timeout_seconds: float = 60.0
+
+
+@dataclass
+class InfoRequest:
+    """Estrutura para solicitação de informação do usuário."""
+    prompt: str
+    request_id: str
+    context: Dict[str, Any] = field(default_factory=dict)
+    timeout_seconds: float = 300.0      # 5 minutos padrão
 
 
 # =============================================================================

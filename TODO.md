@@ -44,8 +44,8 @@ Este documento rastrea o progresso detalhado do desenvolvimento do módulo worke
 - [x] **Interação Humana**
     - [x] Adicionar step type `human_approval`.
     - [x] Implementar mecanismo de callback para input externo.
-- [ ] **Persistência**
-    - [ ] Integrar mecanismo de checkpoint do framework (se disponível) ou customizado.
+- [x] **Persistência**
+    - [x] Integrar mecanismo de checkpoint do framework (se disponível) ou customizado.
 
 ## Fase 4: Robustez e Observabilidade
 - [ ] **Tracing**
@@ -233,6 +233,50 @@ Este documento rastrea o progresso detalhado do desenvolvimento do módulo worke
     - [x] `email_triage_parallel.json` - Paralelo OK
     - [x] `magentic_research.json` - Magentic OK
 
+### 7.13 Frontend - Suporte Completo Magentic One (v0.15.4)
+> **Objetivo**: Alinhar frontend com todos os tipos de workflow suportados pelo backend.
+
+- [x] **Criar MagenticEditor.tsx**
+    - [x] Configuração do Manager (modelo, instruções, max_rounds, max_stall_count)
+    - [x] Switch para Human-in-the-Loop (enable_plan_review)
+    - [x] Gerenciamento visual de participantes
+    - [x] Tooltips explicativos para cada campo
+    - [x] Validações específicas do tipo magentic
+
+- [x] **Atualizar Componentes**
+    - [x] Adicionar `magentic` em `WorkflowTypeSelector.tsx`
+    - [x] Atualizar tipo em `types.ts`
+    - [x] Renderizar no `StudioPage.tsx`
+    - [x] Criar componente `tooltip.tsx` (shadcn/ui)
+
+- [x] **Validação Frontend**
+    - [x] manager_model obrigatório
+    - [x] Mínimo 2 participantes recomendado
+    - [x] max_rounds mínimo 5
+
+### 7.14 Documentação - Guia de Investigação Framework (v0.15.5)
+> **Objetivo**: Criar metodologia para validar alinhamento contínuo com Microsoft Agent Framework.
+
+- [x] **Criar `prompts/GUIA_INVESTIGACAO_FRAMEWORK.md`**
+    - [x] Resumo executivo com status de conformidade
+    - [x] Fase 1: Análise comparativa de orquestradores
+    - [x] Fase 2: Mapeamento de ferramentas built-in
+    - [x] Fase 3: Comparação de schemas declarativos
+    - [x] Fase 4: Eventos e callbacks
+    - [x] Fase 5: Checklist de compliance
+
+- [x] **Apêndice A: Deep Dive Magentic One**
+    - [x] Arquitetura interna (MagenticContext, TaskLedger, ProgressLedger)
+    - [x] Prompts internos (FACTS, PLAN, PROGRESS)
+    - [x] Fluxo de execução detalhado
+    - [x] Checklist de conformidade validado ✅
+    - [x] Perguntas críticas respondidas ✅
+
+- [x] **Validação Final**
+    - [x] Todas as 6 strategies alinhadas com framework oficial
+    - [x] Magentic usa builders corretos, delega ledgers para framework
+    - [x] Nenhuma reimplementação desnecessária encontrada
+
 ### 7.6 Hooks & Observabilidade
 - [x] **Criar `src/worker/events.py`**
     - [x] `WorkerEvent`: Enum de eventos (PROMPT_START, PROMPT_END, TOOL_CALL, etc.)
@@ -301,3 +345,92 @@ Este documento rastrea o progresso detalhado do desenvolvimento do módulo worke
     - [x] **Integração com Engine**
         - [x] Instanciar `WorkflowStateManager` no `WorkflowEngine`.
         - [ ] Passar gerenciador via `WorkflowContext` para acesso pelos agentes.
+
+## Fase 8: Validação e Testes de Regressão (Atual)
+- [x] **Teste de Agentes Isolados**
+    - [x] `agente_analista_fraude.json`
+    - [x] `agente_auditor.json`
+    - [x] `agente_escritor.json`
+    - [x] `agente_extrator_dados.json`
+    - [x] `agente_pesquisador.json`
+    - [x] `agente_resumidor.json`
+    - [x] `agente_suporte_tecnico.json`
+- [x] **Teste de Workflows**
+    - [x] `atendimento_handoff.json` (Handoff) - *Corrigido bug de output vazio*
+    - [x] `classificador_router.json` (Router) - *Corrigido bug de output vazio*
+    - [x] `comite_risco_groupchat.json` (Group Chat)
+    - [x] `email_triage_parallel.json` (Parallel)
+    - [x] `flow_001.json` (Group Chat Loop)
+    - [x] `group_chat.json` (Group Chat)
+    - [x] `handoff_complex.json` (Handoff State Machine)
+    - [x] `handoff.json` (Simple Handoff)
+    - [x] `magentic_research.json` (Magentic One)
+    - [x] `router.json` (Simple Router)
+    - [x] `sequencial_agent.json` (Sequential)
+    - [x] `sequential.json` (Sequential with Tools)
+    - [x] `sinistro_sequential.json` (Sequential Pipeline)
+- [x] **Pendências Identificadas**
+    - [x] `handoff_human.json`: Validado com sucesso (Handoff para Humano).
+
+## Fase 9: Ferramentas Locais e Azure AI Agent Service (v0.16.0)
+> **Objetivo**: Implementar ferramentas locais funcionais (web search, code interpreter) como alternativa às Hosted Tools do Azure AI Agent Service.
+> **Decisão Arquitetural**: Hosted Tools (HostedCodeInterpreterTool, HostedWebSearchTool) requerem AzureAIAgentClient. O projeto usa AzureOpenAIChatClient, portanto ferramentas locais foram criadas.
+
+### 9.1 Ferramentas Locais (v0.16.0) ✅
+- [x] **Arquitetura Plug-and-Play**
+    - [x] Criar `ferramentas/__init__.py` com exports centralizados
+    - [x] Criar `ferramentas/registry.py` com decorator-based registry e categorias
+    - [x] Implementar `ToolRegistry` singleton com busca por categoria/tags
+    - [x] Decorator `@ai_tool` que combina `@ai_function` + registro
+
+- [x] **Web Search (`ferramentas/web_search.py`)**
+    - [x] Implementar `DuckDuckGoBackend` (gratuito, sem API key)
+    - [x] Implementar `DuckDuckGoInstantBackend` (Instant Answers API)
+    - [x] Função `pesquisar_web(query, max_resultados)` com `@ai_function`
+    - [x] Função `buscar_noticias(topico, quantidade)` para buscas de notícias
+    - [x] Função `buscar_documentacao(tecnologia, topico)` para docs técnicas
+    - [x] Dependência: `aiohttp` para HTTP assíncrono
+
+- [x] **Code Interpreter (`ferramentas/code_interpreter.py`)**
+    - [x] Implementar `CodeSandbox` com execução isolada
+    - [x] Whitelist de módulos seguros: math, datetime, json, re, collections, itertools, functools, statistics, random, string, etc.
+    - [x] Função `executar_codigo(codigo)` com timeout de 30s
+    - [x] Função `calcular(expressao)` para expressões matemáticas simples
+    - [x] Função `analisar_dados(dados)` para estatísticas
+    - [x] Builtins restritos (sem file I/O, sem network, sem exec/eval perigosos)
+
+- [x] **Atualização de Workflows**
+    - [x] `magentic_code_interpreter.json`: `hosted://` → `ferramentas:code_interpreter`
+    - [x] `magentic_research_team.json`: `hosted://` → `ferramentas:web_search`
+    - [x] `group_chat_hosted_tools.json`: Ambas ferramentas migradas
+    - [x] `sequential_hosted_tools.json`: Ambas ferramentas migradas
+    - [x] Verificar que não há mais referências `hosted://` em workflows
+
+- [x] **Aviso de Incompatibilidade**
+    - [x] Adicionar warning em `factory.py` quando Hosted Tools são usadas com AzureOpenAIChatClient
+    - [x] Log explícito: "Hosted Tools requerem Azure AI Agent Service (AzureAIAgentClient)"
+
+### 9.2 Azure AI Agent Service (FUTURO) ⏳
+> **Nota**: Esta funcionalidade será implementada quando houver necessidade de Hosted Tools nativos.
+> **Pré-requisitos**:
+> - Projeto no Azure AI Foundry configurado
+> - Credenciais de Azure AI Agent Service (não apenas Azure OpenAI)
+
+- [ ] **Criar Provider para Azure AI Agent**
+    - [ ] `src/worker/providers/azure_agent.py`
+    - [ ] Implementar `AzureAIAgentProvider(LLMProvider)`
+    - [ ] Retornar `AzureAIAgentClient` ao invés de `AzureOpenAIChatClient`
+
+- [ ] **Suporte a Hosted Tools**
+    - [ ] Detecção automática de `hosted://` paths
+    - [ ] Mapeamento: `hosted://code_interpreter` → `HostedCodeInterpreterTool`
+    - [ ] Mapeamento: `hosted://web_search` → `HostedWebSearchTool`
+    - [ ] Mapeamento: `hosted://file_search` → `HostedFileSearchTool`
+
+- [ ] **Configuração**
+    - [ ] Atualizar schema de modelos para distinguir `azure-openai` vs `azure-agent`
+    - [ ] Documentar variáveis de ambiente necessárias (project_endpoint, credential)
+
+- [ ] **Fallback Inteligente**
+    - [ ] Se `hosted://` usado com AzureOpenAI, automaticamente usar ferramenta local
+    - [ ] Warning: "Fallback para ferramenta local, configure Azure AI Agent para usar hosted tools"

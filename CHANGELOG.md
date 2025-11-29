@@ -2,6 +2,188 @@
 
 Todos os marcos notáveis deste projeto serão documentados neste arquivo.
 
+## [0.16.2] - 2025-11-28
+
+### Persistência e Validação (Fase 8 e 9)
+
+#### Adicionado
+- **Persistência de Estado (`src/worker/state.py`)**:
+  - Implementado mecanismo de Checkpointing automático.
+  - Estado do workflow salvo em arquivo JSON configurável (`checkpoint_file`).
+  - Suporte a recuperação de estado (`load_checkpoint`) na inicialização do Engine.
+  - Modelo de estado migrado para Pydantic para serialização robusta.
+
+#### Validado
+- **Testes de Regressão**:
+  - Validado workflow de Handoff (`handoff_human.json`) - Sucesso.
+  - Validado workflow de Code Interpreter Local (`magentic_code_interpreter.json`) - Sucesso.
+  - Validado persistência de estado via teste manual.
+
+#### Documentação
+- Atualizado `TODO.md` refletindo conclusão das Fases 8 e 9.1.
+
+## [0.16.1] - 2025-11-28
+
+### Ferramentas Locais - Alternativa às Hosted Tools (Fase 9.1)
+
+> **Contexto**: Hosted Tools (HostedCodeInterpreterTool, HostedWebSearchTool) requerem Azure AI Agent Service (AzureAIAgentClient), não Azure OpenAI Chat Completions. Este projeto usa AzureOpenAIChatClient, portanto ferramentas locais foram implementadas.
+
+#### Adicionado
+- **Arquitetura Plug-and-Play de Ferramentas (`ferramentas/`)**:
+  - `ferramentas/__init__.py`: Módulo centralizado com exports e documentação
+  - `ferramentas/registry.py`: Registry baseado em decorators com categorias e tags
+  - Decorator `@ai_tool` que combina `@ai_function` + registro automático
+
+- **Web Search Real (`ferramentas/web_search.py`)**:
+  - Backend DuckDuckGo gratuito (sem necessidade de API key)
+  - Funções: `pesquisar_web()`, `buscar_noticias()`, `buscar_documentacao()`, `buscar_multiplo()`
+  - Suporte assíncrono via aiohttp
+  - Fallback inteligente quando API indisponível
+
+- **Code Interpreter Seguro (`ferramentas/code_interpreter.py`)**:
+  - Sandbox com execução isolada e timeout de 30s
+  - Whitelist de módulos seguros (math, datetime, json, re, collections, etc.)
+  - Builtins restritos (sem file I/O, network, exec perigosos)
+  - Funções: `executar_codigo()`, `calcular()`, `analisar_dados()`, `gerar_grafico_texto()`
+
+- **Aviso de Incompatibilidade (`src/worker/factory.py`)**:
+  - Warning explícito quando Hosted Tools são usadas com cliente incompatível
+  - Mensagem: "Hosted Tools requerem Azure AI Agent Service (AzureAIAgentClient)"
+
+#### Alterado
+- **Workflows Atualizados**:
+  - `magentic_code_interpreter.json`: `hosted://` → `ferramentas:code_interpreter`
+  - `magentic_research_team.json`: `hosted://` → `ferramentas:web_search`
+  - `group_chat_hosted_tools.json`: Ambas ferramentas migradas
+  - `sequential_hosted_tools.json`: Ambas ferramentas migradas
+  - Nenhum workflow usa mais `hosted://` paths
+
+#### Dependências
+- Adicionado `aiohttp` para requisições HTTP assíncronas no web search
+
+#### Documentação
+- Atualizado `TODO.md` com Fase 9: Ferramentas Locais e Azure AI Agent Service (futuro)
+- Documentado plano para futura integração com Azure AI Agent Service
+
+---
+
+## [0.16.0] - 2025-11-28
+
+### Worker SDK - Implementação de Gaps do Framework (Fase 8)
+
+> **Objetivo**: Fechar os gaps identificados no relatório de investigação, implementando Streaming, Approval Mode e Hosted Tools.
+
+#### Adicionado
+- **Streaming de Eventos (`src/worker/engine.py`)**:
+  - Implementado suporte a `AGENT_STREAM_UPDATE` no método `ainvoke`.
+  - Captura de deltas de streaming do framework e emissão de eventos normalizados.
+  - Permite feedback em tempo real token-a-token na UI/CLI.
+
+- **Approval Mode (`src/worker/tools/models.py`)**:
+  - Adicionado enum `ApprovalMode` (NEVER, ALWAYS, ON_FIRST, CONDITIONAL).
+  - Campo `approval_mode` no `ToolDefinition` e `ToolConfig`.
+  - Suporte a configuração via YAML (`approval_mode: always`).
+
+- **Hosted Tools (`src/worker/tools/adapters/hosted.py`)**:
+  - Novo adapter `HostedToolAdapter` para ferramentas nativas do framework.
+  - Suporte a `HostedCodeInterpreterTool`, `HostedWebSearchTool`, `HostedFileSearchTool`.
+  - Integração transparente com o sistema de registry existente.
+
+#### Alterado
+- **Factory (`src/worker/factory.py`)**:
+  - Atualizado `register_from_config` para processar `approval_mode` e `hosted_config`.
+  - Importação de novos tipos de ferramentas e modos de aprovação.
+
+- **Configuração (`src/worker/config.py`)**:
+  - Atualizado `ToolConfig` com campos `approval_mode` e `hosted_config`.
+
+#### Impacto
+- **Streaming**: Experiência de usuário mais fluida com respostas em tempo real.
+- **Segurança**: Controle humano sobre execução de ferramentas sensíveis.
+- **Capacidade**: Acesso a ferramentas poderosas hospedadas (Code Interpreter, Bing Search).
+
+---
+
+## [0.15.5] - 2025-11-28
+
+### Documentação - Guia de Investigação do Framework (Completo)
+
+#### Adicionado
+- **`prompts/GUIA_INVESTIGACAO_FRAMEWORK.md`** — Guia completo e expandido para validar alinhamento com Microsoft Agent Framework:
+  - **Resumo Executivo** com status de conformidade de todas as 6 strategies
+  - **Fase 1**: Análise comparativa de orquestradores (tabela validada)
+  - **Fase 2**: Mapeamento de ferramentas built-in (incluindo análise de Hosted Tools)
+  - **Fase 3**: Comparação de schemas declarativos
+  - **Fase 4**: Eventos e callbacks (com matriz detalhada e gaps de Streaming/HITL)
+  - **Fase 5**: Checklist de compliance
+
+- **Apêndice A — Deep Dive Magentic One**:
+  - Arquitetura interna documentada (MagenticContext, TaskLedger, ProgressLedger)
+  - Prompts internos mapeados (FACTS, PLAN, PROGRESS)
+  - Fluxo de execução detalhado e checklist de conformidade
+
+- **Apêndice B — Ferramentas Built-in por Orquestrador**:
+  - Mapeamento de injeção automática e confirmação do modelo Magentic
+
+- **Apêndice C — Schema Declarativo**:
+  - Referência para análise de workflow samples YAML
+
+- **Apêndice D — Relatório da Investigação**:
+  - Análise detalhada de `_tools.py` e `_events.py`
+  - Lista de gaps identificados (Streaming, Approval Mode, Hosted Tools)
+
+#### Status de Conformidade (Validado ✅)
+| Orquestrador | Builder Oficial | Nossa Strategy | Conformidade |
+|--------------|-----------------|----------------|--------------|
+| Sequential | `SequentialBuilder` | `SequentialStrategy` | ✅ 100% |
+| Parallel | `ConcurrentBuilder` | `ParallelStrategy` | ✅ 100% |
+| Group Chat | `GroupChatBuilder` | `GroupChatStrategy` | ✅ 100% |
+| Handoff | `HandoffBuilder` | `HandoffStrategy` | ✅ 100% |
+| Router | `WorkflowBuilder` | `RouterStrategy` | ✅ 100% |
+| Magentic | `MagenticBuilder` | `MagenticStrategy` | ✅ 100% |
+
+#### Gaps Identificados para Próxima Versão
+1. **Streaming**: Falta `AGENT_STREAM_UPDATE`
+2. **Approval Mode**: `@ai_function(approval_mode=...)` não explorado
+3. **Hosted Tools**: Oportunidade de integrar code_interpreter, web_search
+
+---
+
+## [0.15.4] - 2025-11-28
+
+### Frontend - Suporte Completo ao Workflow Magentic One
+
+#### Adicionado
+- **`MagenticEditor.tsx`** — Editor visual para workflows Magentic One:
+  - Configuração do Manager (modelo, instruções, max_rounds, max_stall_count)
+  - Switch para Human-in-the-Loop (plan review)
+  - Gerenciamento visual de participantes
+  - Tooltips explicativos para cada campo
+  - Validações específicas do tipo magentic
+
+- **`tooltip.tsx`** — Componente Tooltip (shadcn/ui) para dicas contextuais
+
+- **Suporte ao tipo `magentic` no Workflow Studio**:
+  - Adicionado em `WorkflowTypeSelector.tsx` com ícone Sparkles
+  - Tipos atualizados em `types.ts`
+  - Renderização no `StudioPage.tsx`
+  - Validação específica (manager_model obrigatório, min 2 participantes)
+
+#### Dependências
+- `@radix-ui/react-tooltip` — componente de tooltip
+
+#### Status dos Tipos de Workflow no Frontend
+| Tipo | Status |
+|------|--------|
+| `sequential` | ✅ Completo |
+| `parallel` | ✅ Completo |
+| `group_chat` | ✅ Completo |
+| `handoff` | ✅ Completo |
+| `router` | ✅ Completo |
+| `magentic` | ✅ **NOVO** |
+
+---
+
 ## [0.15.3] - 2025-11-27
 
 ### UI do Console Aprimorada

@@ -10,6 +10,7 @@ import {
   Users, 
   ArrowRightLeft, 
   GitFork,
+  Sparkles,
   // Network // TODO: Reativar DAG quando validação estiver pronta
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -64,6 +65,14 @@ const workflowTypes: WorkflowTypeOption[] = [
     icon: GitFork,
     color: "border-cyan-500 hover:border-cyan-400",
     example: "Classificador → [Destino A | Destino B | Default]",
+  },
+  {
+    type: "magentic",
+    name: "Magentic One",
+    description: "Orquestração AI-driven com planejamento dinâmico e replanning",
+    icon: Sparkles,
+    color: "border-violet-500 hover:border-violet-400",
+    example: "Manager planeja → [Especialista1, Especialista2, ...]",
   },
   // TODO: Reativar DAG quando validação estiver pronta
   // {

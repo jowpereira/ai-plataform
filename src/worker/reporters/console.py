@@ -137,13 +137,34 @@ class ConsoleReporter:
             args = data.get("arguments", {})
             console.print(f"  [dim magenta]├─[/] [magenta]🔧 {tool}[/] [dim]({timestamp})[/]")
             if args:
-                console.print(f"  [dim]│   {json.dumps(args, ensure_ascii=False)[:80]}[/]")
+                args_str = json.dumps(args, ensure_ascii=False)
+                # Truncar argumentos muito longos
+                if len(args_str) > 120:
+                    args_str = args_str[:120] + "..."
+                console.print(f"  [dim]│   {args_str}[/]")
             
         elif event.type == WorkerEventType.TOOL_CALL_COMPLETE:
             tool = data.get("tool", "unknown")
             result = data.get("result", "")
-            result_str = str(result)[:100]
-            console.print(f"  [dim green]├─[/] [green]✓ {tool}[/] [dim]→ {result_str} ({timestamp})[/]")
+            result_str = str(result)
+            
+            # Extrair primeira linha significativa para preview
+            first_line = result_str.split('\n')[0]
+            if len(first_line) > 80:
+                first_line = first_line[:80] + "..."
+            
+            console.print(f"  [dim green]├─[/] [green]✓ {tool}[/] [dim]→ {first_line} ({timestamp})[/]")
+            
+            # Se resultado for multi-linha, mostrar mais detalhes
+            lines = result_str.strip().split('\n')
+            if len(lines) > 1:
+                for line in lines[1:10]:  # Mostrar até 9 linhas adicionais
+                    if line.strip():
+                        display_line = line[:100] + "..." if len(line) > 100 else line
+                        console.print(f"  [dim]│   {display_line}[/]")
+                
+                if len(lines) > 10:
+                    console.print(f"  [dim]│   ... (+{len(lines)-10} linhas)[/]")
             
         elif event.type == WorkerEventType.TOOL_CALL_ERROR:
             tool = data.get("tool", "unknown")

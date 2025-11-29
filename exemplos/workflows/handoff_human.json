@@ -1,6 +1,6 @@
 {
   "name": "Transferência para Humano",
-  "description": "Demonstra um agente transferindo uma tarefa para um usuário humano.",
+  "description": "Demonstra um agente transferindo uma tarefa para um usuário humano via handoff.",
   "version": "1.0",
   "resources": {
     "models": {
@@ -16,64 +16,32 @@
       "id": "support_bot",
       "role": "Suporte",
       "model": "gpt-4o-mini",
-      "instructions": "Você é um bot de suporte. Se o usuário pedir um humano ou se você não puder ajudar, diga 'ESCALAR'. Caso contrário, responda à pergunta."
+      "instructions": "Você é um bot de suporte. Se o usuário pedir um humano ou se você não puder ajudar, chame 'handoff_to_human_agent'. Caso contrário, responda à pergunta."
+    },
+    {
+      "id": "human_agent",
+      "role": "Atendente Humano",
+      "model": "gpt-4o-mini",
+      "instructions": "Você está simulando um atendente humano. Seja gentil e resolva o problema do usuário com empatia."
     }
   ],
   "workflow": {
-    "type": "dag",
-    "start_step": "start",
-    "nodes": [
-      {
-        "id": "start",
-        "type": "_InputToConversation"
-      },
+    "type": "handoff",
+    "start_step": "bot_step",
+    "steps": [
       {
         "id": "bot_step",
         "type": "agent",
-        "agent": "support_bot"
-      },
-      {
-        "id": "check_escalation",
-        "type": "router",
-        "config": {
-            "expression": "input"
-        }
+        "agent": "support_bot",
+        "input_template": "{{user_input}}",
+        "transitions": ["human_step"]
       },
       {
         "id": "human_step",
-        "type": "human",
-        "label": "Suporte Humano",
-        "config": {
-            "instructions": "Por favor, ajude o usuário com sua solicitação."
-        }
-      },
-      {
-        "id": "end",
-        "type": "_EndWithConversation"
-      }
-    ],
-    "edges": [
-      {
-        "source": "start",
-        "target": "bot_step"
-      },
-      {
-        "source": "bot_step",
-        "target": "check_escalation"
-      },
-      {
-        "source": "check_escalation",
-        "target": "human_step",
-        "condition": "'escalar' in str(value).lower()"
-      },
-      {
-        "source": "check_escalation",
-        "target": "end",
-        "type": "default"
-      },
-      {
-        "source": "human_step",
-        "target": "end"
+        "type": "agent",
+        "agent": "human_agent",
+        "input_template": "O usuário foi escalado para você. Contexto: {{user_input}}",
+        "transitions": []
       }
     ]
   }

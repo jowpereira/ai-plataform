@@ -43,7 +43,10 @@ class WorkflowEngine:
 
     def setup(self) -> None:
         """Inicializa recursos, estado e constrói o workflow."""
-        self.state_manager = WorkflowStateManager(execution_id=str(uuid.uuid4()))
+        self.state_manager = WorkflowStateManager(
+            execution_id=str(uuid.uuid4()),
+            checkpoint_file=self.config.checkpoint_file
+        )
         self.build()
         self.state_manager.set_status("initialized")
 
@@ -226,6 +229,9 @@ class WorkflowEngine:
             async for event in self._workflow.run_stream(message=initial_input):
                 event_type = type(event).__name__
                 
+                # Debug: logar estrutura do evento
+                logging.debug(f"[Engine Event] {event_type}: {dir(event)}")
+                
                 # AgentRunUpdateEvent: Notifica que agente está ativo (streaming)
                 if event_type == "AgentRunUpdateEvent":
                     agent_name = getattr(event, 'executor_id', 'unknown')
@@ -235,24 +241,104 @@ class WorkflowEngine:
                         agents_seen.add(agent_name)
                         current_agent = agent_name
                         self._emit(WorkerEventType.AGENT_START, {"agent_name": agent_name})
+                    
+                    # Capturar dados do evento para detectar tool calls
+                    event_data = getattr(event, 'data', None)
+                    if event_data:
+                        # Extrair texto do evento
+                        text = getattr(event_data, 'text', None) or getattr(event_data, 'content', None)
+                        
+                        # Detectar execução de Code Interpreter
+                        if text:
+                            text_str = str(text)
+                            
+                            # Log detalhado de Code Interpreter
+                            if '```python' in text_str or 'def ' in text_str or 'import ' in text_str:
+                                # Código Python detectado
+                                self._emit(WorkerEventType.TOOL_CALL_START, {
+                                    "tool": "code_interpreter",
+                                    "agent": agent_name,
+                                    "arguments": {"code_preview": text_str[:300]}
+                                })
+                            
+                            # Resultados de execução
+                            if any(marker in text_str for marker in ['Output:', 'Result:', '>>>', 'Executed', 'execution']):
+                                self._emit(WorkerEventType.TOOL_CALL_COMPLETE, {
+                                    "tool": "code_interpreter", 
+                                    "agent": agent_name,
+                                    "result": text_str[:500]
+                                })
+                            
+                            # Web Search
+                            if any(marker in text_str.lower() for marker in ['search result', 'found:', 'searching for']):
+                                self._emit(WorkerEventType.TOOL_CALL_COMPLETE, {
+                                    "tool": "web_search",
+                                    "agent": agent_name,
+                                    "result": text_str[:500]
+                                })
+                    
+                    # Tentar extrair delta para streaming
+                    # O framework pode expor delta de diferentes formas dependendo da versão
+                    delta = getattr(event, 'delta', None)
+                    if not delta and hasattr(event, 'data'):
+                        delta = getattr(event.data, 'delta', None)
+                        
+                    if delta and isinstance(delta, str) and agent_name:
+                        self._emit(WorkerEventType.AGENT_STREAM_UPDATE, {
+                            "agent_name": agent_name,
+                            "content": delta,
+                            "run_id": getattr(event, 'run_id', ''),
+                            "thread_id": getattr(event, 'thread_id', '')
+                        })
                 
                 # WorkflowOutputEvent: Mensagens completas - emitir resposta de cada agente
                 elif event_type == "WorkflowOutputEvent":
                     data = getattr(event, 'data', None)
-                    if data and isinstance(data, list):
-                        # Emitir AGENT_RESPONSE para cada mensagem de assistant
-                        for msg in data:
-                            # Role pode ser enum (Role.assistant) ou string
-                            role = getattr(msg, 'role', None)
-                            if str(role) == 'assistant':
-                                text = getattr(msg, 'text', None)
-                                author = getattr(msg, 'author_name', None)
-                                if text and author:
-                                    last_response = text
-                                    self._emit(
-                                        WorkerEventType.AGENT_RESPONSE, 
-                                        {"agent_name": author, "content": text}
-                                    )
+                    if data:
+                        if isinstance(data, list):
+                            # Emitir AGENT_RESPONSE para cada mensagem de assistant
+                            for msg in data:
+                                # Role pode ser enum (Role.assistant) ou string
+                                role = getattr(msg, 'role', None)
+                                if str(role) == 'assistant':
+                                    text = getattr(msg, 'text', None)
+                                    author = getattr(msg, 'author_name', None)
+                                    if text and author:
+                                        last_response = text
+                                        self._emit(
+                                            WorkerEventType.AGENT_RESPONSE, 
+                                            {"agent_name": author, "content": text}
+                                        )
+                        elif isinstance(data, str):
+                            # Handle string output directly
+                            last_response = data
+                            author = current_agent or "unknown"
+                            self._emit(
+                                WorkerEventType.AGENT_RESPONSE, 
+                                {"agent_name": author, "content": data}
+                            )
+                
+                # RequestInfoEvent: Handoff/Human workflows pausam pedindo input
+                # Precisamos capturar a última resposta da conversa
+                elif event_type == "RequestInfoEvent":
+                    data = getattr(event, 'data', None)
+                    if data and hasattr(data, 'conversation'):
+                        msgs = data.conversation
+                        if msgs:
+                            # Procurar última mensagem de assistant
+                            for msg in reversed(msgs):
+                                role = getattr(msg, 'role', None)
+                                if str(role) == 'assistant':
+                                    text = getattr(msg, 'text', None)
+                                    author = getattr(msg, 'author_name', None)
+                                    if text:
+                                        last_response = text
+                                        # Emitir se ainda não foi emitido (assumindo que WorkflowOutputEvent não ocorreu)
+                                        self._emit(
+                                            WorkerEventType.AGENT_RESPONSE, 
+                                            {"agent_name": author or "unknown", "content": text}
+                                        )
+                                        break
             
             # Retornar resultado
             if last_response:

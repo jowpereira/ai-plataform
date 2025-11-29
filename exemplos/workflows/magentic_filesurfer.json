@@ -1,0 +1,66 @@
+{
+  "version": "1.0",
+  "name": "Magentic File Surfer",
+  "description": "Workflow Magentic One onde um agente navega e manipula arquivos locais sob coordenação.",
+  "resources": {
+    "models": {
+      "gpt-4o-mini": {
+        "type": "azure-openai",
+        "deployment": "gpt-4o-mini"
+      }
+    },
+    "tools": [
+      {
+        "id": "listar_arquivos",
+        "path": "ferramentas:listar_arquivos",
+        "description": "Lista arquivos em um diretório."
+      },
+      {
+        "id": "ler_arquivo",
+        "path": "ferramentas:ler_arquivo",
+        "description": "Lê o conteúdo de um arquivo."
+      },
+      {
+        "id": "escrever_arquivo",
+        "path": "ferramentas:escrever_arquivo",
+        "description": "Escreve conteúdo em um arquivo."
+      }
+    ]
+  },
+  "agents": [
+    {
+      "id": "file_surfer",
+      "role": "Navegador de Arquivos",
+      "description": "Agente capaz de explorar o sistema de arquivos, ler e escrever arquivos.",
+      "model": "gpt-4o-mini",
+      "instructions": "Você é um especialista em sistema de arquivos. Use suas ferramentas para listar, ler e escrever arquivos conforme solicitado. Sempre verifique se o arquivo existe antes de ler.",
+      "tools": ["listar_arquivos", "ler_arquivo", "escrever_arquivo"]
+    },
+    {
+      "id": "analyst",
+      "role": "Analista de Conteúdo",
+      "description": "Analisa o conteúdo dos arquivos encontrados.",
+      "model": "gpt-4o-mini",
+      "instructions": "Você analisa o conteúdo de arquivos de texto. Identifique padrões, resuma o conteúdo e sugira melhorias.",
+      "tools": []
+    }
+  ],
+  "workflow": {
+    "type": "magentic",
+    "manager_model": "gpt-4o-mini",
+    "max_rounds": 10,
+    "manager_instructions": "Você coordena uma tarefa de exploração de arquivos. 1) Peça ao File Surfer para listar arquivos. 2) Peça para ler um arquivo relevante (ex: README.md ou TODO.md). 3) Peça ao Analista para resumir o conteúdo. 4) Peça ao File Surfer para criar um arquivo de relatório 'relatorio_analise.txt' com o resumo.",
+    "steps": [
+      {
+        "id": "step_surfer",
+        "type": "agent",
+        "agent": "file_surfer"
+      },
+      {
+        "id": "step_analyst",
+        "type": "agent",
+        "agent": "analyst"
+      }
+    ]
+  }
+}

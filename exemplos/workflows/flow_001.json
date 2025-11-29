@@ -38,6 +38,7 @@
   ],
   "workflow": {
     "type": "group_chat",
+    "manager_model": "gpt-4o-mini",
     "steps": [
       {
         "id": "participant_1764099415951",

@@ -1,0 +1,81 @@
+{
+  "id": "group-chat-hosted-tools",
+  "name": "Group Chat com Ferramentas",
+  "description": "Group Chat onde agentes colaboram usando Web Search e Code Interpreter locais",
+  "version": "1.0",
+  "resources": {
+    "models": {
+      "gpt-4o-mini": {
+        "type": "azure-openai",
+        "deployment": "gpt-4o-mini"
+      }
+    },
+    "tools": [
+      {
+        "id": "pesquisar_web",
+        "path": "ferramentas.web_search:pesquisar_web",
+        "description": "Busca informações na web"
+      },
+      {
+        "id": "executar_codigo",
+        "path": "ferramentas.code_interpreter:executar_codigo",
+        "description": "Executa código Python"
+      },
+      {
+        "id": "calcular",
+        "path": "ferramentas.code_interpreter:calcular",
+        "description": "Calcula expressões matemáticas"
+      }
+    ]
+  },
+  "agents": [
+    {
+      "id": "researcher",
+      "role": "Pesquisador",
+      "description": "Busca informações na internet",
+      "model": "gpt-4o-mini",
+      "instructions": "Você é um pesquisador. Use pesquisar_web para encontrar informações relevantes quando solicitado pelo grupo.",
+      "tools": ["pesquisar_web"]
+    },
+    {
+      "id": "coder",
+      "role": "Programador",
+      "description": "Executa código e faz análises",
+      "model": "gpt-4o-mini",
+      "instructions": "Você é um programador Python. Use executar_codigo para rodar código e calcular para expressões simples.",
+      "tools": ["executar_codigo", "calcular"]
+    },
+    {
+      "id": "critic",
+      "role": "Crítico",
+      "description": "Avalia e questiona as soluções",
+      "model": "gpt-4o-mini",
+      "instructions": "Você é um crítico construtivo. Avalie as propostas, identifique falhas e sugira melhorias. Diga 'APROVADO' quando satisfeito.",
+      "tools": []
+    }
+  ],
+  "workflow": {
+    "type": "group_chat",
+    "manager_model": "gpt-4o-mini",
+    "max_rounds": 10,
+    "termination_condition": "APROVADO",
+    "manager_instructions": "Você é o moderador do grupo. Coordene Pesquisador, Programador e Crítico para resolver a tarefa. O Crítico deve aprovar a solução final.",
+    "steps": [
+      {
+        "id": "step_researcher",
+        "type": "agent",
+        "agent": "researcher"
+      },
+      {
+        "id": "step_coder",
+        "type": "agent",
+        "agent": "coder"
+      },
+      {
+        "id": "step_critic",
+        "type": "agent",
+        "agent": "critic"
+      }
+    ]
+  }
+}

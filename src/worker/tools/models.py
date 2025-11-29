@@ -2,6 +2,8 @@
 Modelos Pydantic para o Sistema de Ferramentas.
 
 Define as estruturas de dados para definição, execução e resultado de ferramentas.
+
+Versão: 0.9.0 - Adicionado suporte a Hosted Tools e ApprovalMode
 """
 
 from enum import Enum
@@ -13,9 +15,24 @@ import time
 class ToolType(str, Enum):
     """Tipos de ferramentas suportadas."""
     LOCAL = "local"      # Função Python local via importlib
-    HTTP = "http"        # Endpoint HTTP/REST externo
-    MCP = "mcp"          # Model Context Protocol server
+    HOSTED = "hosted"    # Hosted Tools do Agent Framework
     CUSTOM = "custom"    # Adapter customizado
+
+
+class ApprovalMode(str, Enum):
+    """Modos de aprovação para ferramentas com human-in-the-loop."""
+    NEVER = "never"                    # Nunca requer aprovação
+    ALWAYS = "always_require"          # Sempre requer aprovação
+    ON_FIRST = "on_first_invocation"   # Apenas na primeira chamada
+    CONDITIONAL = "conditional"         # Baseado em condição customizada
+
+
+class HostedToolType(str, Enum):
+    """Tipos de Hosted Tools do Agent Framework."""
+    CODE_INTERPRETER = "code_interpreter"  # HostedCodeInterpreterTool
+    WEB_SEARCH = "web_search"              # HostedWebSearchTool
+    FILE_SEARCH = "file_search"            # HostedFileSearchTool
+    MCP = "mcp"                            # HostedMCPTool
 
 
 class RetryPolicy(BaseModel):
@@ -73,10 +90,32 @@ class ToolDefinition(BaseModel):
     timeout: float = Field(default=30.0, ge=1.0, description="Timeout em segundos")
     retry_policy: Optional[RetryPolicy] = Field(default=None, description="Política de retry")
     
+    # Approval Mode (Human-in-the-loop)
+    approval_mode: ApprovalMode = Field(
+        default=ApprovalMode.NEVER,
+        description="Modo de aprovação humana para esta ferramenta"
+    )
+    approval_message: Optional[str] = Field(
+        default=None,
+        description="Mensagem customizada para solicitação de aprovação"
+    )
+    
     # Metadados
     tags: List[str] = Field(default_factory=list, description="Tags para categorização")
     version: str = Field(default="1.0.0", description="Versão da ferramenta")
     enabled: bool = Field(default=True, description="Se a ferramenta está habilitada")
+    
+    # Limites de invocação
+    max_invocations: Optional[int] = Field(
+        default=None,
+        ge=1,
+        description="Número máximo de invocações permitidas por sessão"
+    )
+    max_invocation_exceptions: Optional[int] = Field(
+        default=None,
+        ge=1,
+        description="Número máximo de exceções antes de desabilitar"
+    )
     
     # Configurações específicas por tipo
     http_config: Optional[Dict[str, Any]] = Field(
@@ -86,6 +125,10 @@ class ToolDefinition(BaseModel):
     mcp_config: Optional[Dict[str, Any]] = Field(
         default=None,
         description="Configurações MCP (server_url, transport)"
+    )
+    hosted_config: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Configurações para Hosted Tools (hosted_type, vector_store_id, etc.)"
     )
     
     @field_validator("name")

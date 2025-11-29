@@ -1,0 +1,72 @@
+{
+  "id": "sequential-hosted-tools",
+  "name": "Sequential com Hosted Tools",
+  "description": "Workflow sequencial demonstrando uso de Code Interpreter e Web Search locais",
+  "version": "1.1",
+  "resources": {
+    "models": {
+      "gpt-4o-mini": {
+        "type": "azure-openai",
+        "deployment": "gpt-4o-mini"
+      }
+    },
+    "tools": [
+      {
+        "id": "web_search",
+        "path": "ferramentas.web_search:pesquisar_web",
+        "description": "Busca informações na web usando DuckDuckGo"
+      },
+      {
+        "id": "code_interpreter",
+        "path": "ferramentas.code_interpreter:executar_codigo",
+        "description": "Executa código Python em sandbox seguro"
+      }
+    ]
+  },
+  "agents": [
+    {
+      "id": "researcher",
+      "role": "Pesquisador",
+      "model": "gpt-4o-mini",
+      "instructions": "Você pesquisa informações relevantes sobre o tema solicitado. Use web_search para encontrar dados atuais.",
+      "tools": ["web_search"]
+    },
+    {
+      "id": "analyst",
+      "role": "Analista",
+      "model": "gpt-4o-mini",
+      "instructions": "Você analisa os dados coletados. Use code_interpreter se precisar fazer cálculos ou processamento.",
+      "tools": ["code_interpreter"]
+    },
+    {
+      "id": "reporter",
+      "role": "Relator",
+      "model": "gpt-4o-mini",
+      "instructions": "Você gera um relatório final consolidando pesquisa e análise.",
+      "tools": []
+    }
+  ],
+  "workflow": {
+    "type": "sequential",
+    "steps": [
+      {
+        "id": "step_research",
+        "type": "agent",
+        "agent": "researcher",
+        "input_template": "Pesquise sobre: {{user_input}}"
+      },
+      {
+        "id": "step_analysis",
+        "type": "agent",
+        "agent": "analyst",
+        "input_template": "Analise os seguintes dados de pesquisa e extraia insights: {{previous_output}}"
+      },
+      {
+        "id": "step_report",
+        "type": "agent",
+        "agent": "reporter",
+        "input_template": "Gere um relatório executivo baseado na análise: {{previous_output}}"
+      }
+    ]
+  }
+}

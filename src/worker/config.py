@@ -10,6 +10,14 @@ class ToolConfig(BaseModel):
     id: str = Field(..., description="Identificador único da ferramenta")
     path: str = Field(..., description="Caminho de importação (module:function)")
     description: Optional[str] = Field(None, description="Descrição opcional da ferramenta")
+    approval_mode: Optional[Literal["always", "never", "custom"]] = Field(
+        default="never", 
+        description="Modo de aprovação humana para execução da ferramenta"
+    )
+    hosted_config: Optional[Dict[str, Any]] = Field(
+        None, 
+        description="Configuração específica para ferramentas hospedadas (Hosted Tools)"
+    )
 
 
 class ModelConfig(BaseModel):
@@ -18,6 +26,8 @@ class ModelConfig(BaseModel):
     env_vars: Optional[Dict[str, str]] = Field(
         default_factory=dict, description="Mapeamento de variáveis de ambiente específicas"
     )
+    
+    model_config = {"extra": "allow"}
 
 
 class AgentConfig(BaseModel):
