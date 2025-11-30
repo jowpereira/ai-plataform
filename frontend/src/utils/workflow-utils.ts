@@ -741,12 +741,13 @@ export function consolidateBidirectionalEdges(edges: Edge[]): Edge[] {
 }
 
 /**
- * Converts React Flow nodes and edges to the backend WorkflowConfig format (DAG)
+ * Converts React Flow nodes and edges to the backend WorkflowConfig format
+ * @param workflowType - Tipo do workflow (default: sequential). DAG removido pois não é suportado pelo backend.
  */
 export function convertFlowToWorkflowConfig(
   nodes: Node[],
   edges: Edge[],
-  workflowType: "dag" | "sequential" | "parallel" | "router" = "dag"
+  workflowType: "sequential" | "parallel" | "router" | "group_chat" | "handoff" | "magentic" = "sequential"
 ): WorkflowConfig {
   
   const backendNodes: NodeConfig[] = nodes.map((node) => {
@@ -814,7 +815,7 @@ export function convertFlowToWorkflowConfig(
   }
 
   return {
-    type: workflowType as any,
+    type: workflowType,
     start_step: startStep,
     nodes: backendNodes,
     edges: backendEdges,

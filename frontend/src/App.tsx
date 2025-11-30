@@ -7,7 +7,7 @@ import StudioPage from "@/pages/platform/studio/StudioPage";
 import AgentListPage from "@/pages/platform/agents/AgentListPage";
 import WorkflowListPage from "@/pages/platform/workflow/WorkflowListPage";
 import ChatPage from "@/pages/platform/chat/ChatPage";
-import DebugPage from "@/pages/platform/debug/DebugPage";
+import PlaygroundPage from "@/pages/platform/playground/PlaygroundPage";
 import UsersPage from "@/pages/platform/admin/UsersPage";
 
 export default function App() {
@@ -25,9 +25,11 @@ export default function App() {
           <Route path="agents" element={<AgentListPage />} />
           <Route path="workflows" element={<WorkflowListPage />} />
           <Route path="studio" element={<StudioPage />} />
+          <Route path="playground" element={<PlaygroundPage />} />
           <Route path="chat" element={<ChatPage />} />
-          <Route path="debug" element={<DebugPage />} />
           <Route path="users" element={<UsersPage />} />
+          {/* Redirect legacy /debug route to /playground */}
+          <Route path="debug" element={<Navigate to="/platform/playground" replace />} />
         </Route>
 
         {/* Fallback */}

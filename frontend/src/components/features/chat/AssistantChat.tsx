@@ -1,3 +1,11 @@
+/**
+ * @deprecated Este componente foi substituído pelo AgentView/WorkflowView.
+ * A ChatPage agora utiliza diretamente o AgentView que possui renderização
+ * robusta de mensagens, suporte a ferramentas e melhor tratamento de erros.
+ * 
+ * Este arquivo será removido em uma versão futura.
+ * Consulte: src/components/features/agent/agent-view.tsx
+ */
 import { useState, useRef, useEffect } from "react";
 import { Send, Bot, User, Loader2, Wrench, CheckCircle2, Clock3 } from "lucide-react";
 import ReactMarkdown from "react-markdown";

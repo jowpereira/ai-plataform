@@ -21,6 +21,7 @@ interface AppHeaderProps {
   onBrowseGallery?: () => void;
   isLoading?: boolean;
   onSettingsClick?: () => void;
+  showEntitySelector?: boolean; // Mostrar seletor apenas em páginas que precisam (Playground, Chat)
 }
 
 export function AppHeader({
@@ -32,6 +33,7 @@ export function AppHeader({
   onBrowseGallery,
   isLoading = false,
   onSettingsClick,
+  showEntitySelector = false,
 }: AppHeaderProps) {
   const { oaiMode } = useDevUIStore();
 
@@ -79,8 +81,8 @@ export function AppHeader({
         )}
       </div>
 
-      {/* Show entity selector only when NOT in OAI mode */}
-      {!oaiMode.enabled && (
+      {/* Show entity selector only on Playground/Chat pages and when NOT in OAI mode */}
+      {showEntitySelector && !oaiMode.enabled && (
         <EntitySelector
           agents={agents}
           workflows={workflows}

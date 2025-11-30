@@ -804,6 +804,30 @@ class MessageMapper:
                         if not text:
                             # Fallback to string representation
                             text = str(output_data)
+                    elif isinstance(output_data, list):
+                        # Handle list of ChatMessages or other objects
+                        texts = []
+                        for item in output_data:
+                            if hasattr(item, "__class__") and item.__class__.__name__ == "ChatMessage":
+                                # Extract text from ChatMessage
+                                msg_text = getattr(item, "text", None)
+                                if msg_text:
+                                    author = getattr(item, "author_name", None)
+                                    if author:
+                                        texts.append(f"[{author}]: {msg_text}")
+                                    else:
+                                        texts.append(msg_text)
+                            elif isinstance(item, str):
+                                texts.append(item)
+                            elif hasattr(item, "to_dict"):
+                                # SerializationMixin objects
+                                try:
+                                    texts.append(json.dumps(item.to_dict(), indent=2))
+                                except Exception:
+                                    texts.append(str(item))
+                            else:
+                                texts.append(str(item))
+                        text = "\n\n".join(texts) if texts else str(output_data)
                     elif isinstance(output_data, str):
                         # String output
                         text = output_data

@@ -1,6 +1,56 @@
 # Roadmap de Desenvolvimento - Worker Genérico AI Platform
 
-Este documento rastrea o progresso detalhado do desenvolvimento do módulo worker genérico.
+Este documento rasteia o progresso detalhado do desenvolvimento do módulo worker genérico.
+
+## Fase 10: Refatoração Frontend - Globalização Header e Unificação Chat/Playground ✅
+
+> **Objetivo**: Unificar a experiência de navegação, transformar Debug em Playground e elevar a qualidade do Chat.
+> **Concluído em**: 29/11/2025
+
+### 10.1 Globalização do AppHeader
+- [x] **Mover AppHeader para PlatformLayout**
+    - [x] Header agora visível em todas as páginas da plataforma
+    - [x] Carregamento de entidades centralizado no layout
+    - [x] Estados de loading/erro tratados no nível do layout
+    - [x] Remoção do título "AI Platform" da sidebar (marca no Header)
+
+### 10.2 Renomeação Debug → Playground
+- [x] **Nova estrutura de arquivos**
+    - [x] Criar `src/pages/platform/playground/PlaygroundPage.tsx`
+    - [x] Atualizar rotas em `App.tsx` (`/platform/playground`)
+    - [x] Redirect de `/platform/debug` para `/platform/playground`
+- [x] **Atualizar navegação**
+    - [x] Sidebar reorganizada: Playground acima do Chat
+    - [x] Ícone Play para Playground
+    - [x] Seção "Interação" agrupa Playground e Chat
+
+### 10.3 Upgrade da Página de Chat
+- [x] **Refatorar ChatPage**
+    - [x] Substituir `AssistantChat` por `AgentView`/`WorkflowView`
+    - [x] Corrigir renderização de ferramentas
+    - [x] Suporte completo a workflows (sem grafo visual)
+    - [x] Debug panel automaticamente desabilitado
+- [x] **Limpeza**
+    - [x] Marcar `AssistantChat.tsx` como `@deprecated`
+
+### 10.4 Verificação e Ajustes
+- [x] **Sincronização de seleção**
+    - [x] Entidade selecionada no Header funciona em todas as páginas
+    - [x] Query param `?entity_id=...` continua funcionando
+
+### 10.5 Correções de Integração (v0.17.1)
+- [x] **Playground - Execução de Workflows**
+    - [x] Remover envio de `workflow_config` modificado
+    - [x] Workflows declarativos usam configuração do backend
+    - [x] Erro "Field required: steps" corrigido
+- [x] **Serialização de Eventos**
+    - [x] Tratamento de listas de `ChatMessage` em `WorkflowOutputEvent`
+    - [x] Output final mostra texto real em vez de `<object at 0x...>`
+- [x] **Tipos de Workflow**
+    - [x] Removido tipo `dag` do frontend (não suportado)
+    - [x] Adicionado `magentic` aos tipos válidos
+
+---
 
 ## Fase 1: Fundamentos e Estrutura (MVP)
 - [x] **Setup Inicial**

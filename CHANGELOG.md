@@ -2,6 +2,76 @@
 
 Todos os marcos notáveis deste projeto serão documentados neste arquivo.
 
+## [0.17.1] - 2025-11-29
+
+### Correções Playground e Serialização de Eventos
+
+#### Corrigido
+- **WorkflowView (`workflow-view.tsx`)**:
+  - Removido envio de `workflow_config` customizado - workflows declarativos já estão definidos no backend.
+  - Playground agora é puramente para visualização e debug do grafo, não modificação.
+  - Erro "Field required: steps" eliminado.
+
+- **Serialização de ChatMessage (`_mapper.py`)**:
+  - Corrigido tratamento de listas de `ChatMessage` em `WorkflowOutputEvent`.
+  - Output final agora mostra texto real das mensagens em vez de `<object at 0x...>`.
+  - Formato: `[autor]: texto` quando há `author_name`, senão apenas texto.
+
+- **Tipo de Workflow (`workflow-utils.ts`)**:
+  - Removido tipo `dag` do default (não suportado pelo backend).
+  - Default alterado para `sequential`.
+  - Adicionado suporte a `magentic` nos tipos válidos.
+
+- **Tipos TypeScript (`workflow.ts`)**:
+  - Adicionado `magentic` ao tipo `WorkflowConfig.type`.
+
+- **Seletor de Entidades no Header (`app-header.tsx`, `PlatformLayout.tsx`)**:
+  - Seletor de agentes/workflows agora só aparece em páginas que precisam.
+  - Visível apenas no Playground e Chat.
+  - Demais páginas mostram apenas marca MAIA e controles globais.
+
+## [0.17.0] - 2025-11-29
+
+### Frontend - Globalização do Header e Unificação Chat/Playground
+
+#### Adicionado
+- **PlaygroundPage (`src/pages/platform/playground/PlaygroundPage.tsx`)**:
+  - Nova página substitui DebugPage com foco em desenvolvimento e testes.
+  - Mantém funcionalidades de debug panel, workflow visualization e ferramentas.
+  - Código simplificado - lógica de carregamento movida para PlatformLayout.
+
+#### Alterado
+- **PlatformLayout (`src/layouts/PlatformLayout.tsx`)**:
+  - AppHeader agora é global, visível em todas as páginas da plataforma.
+  - Carregamento centralizado de entidades (agents, workflows) via Zustand store.
+  - Nova organização da sidebar: Playground acima do Chat na seção "Interação".
+  - Estados de loading e erro tratados no nível do layout.
+
+- **ChatPage (`src/pages/platform/chat/ChatPage.tsx`)**:
+  - Completamente refatorada para usar `AgentView` e `WorkflowView`.
+  - Mesma engine robusta do Playground (renderização de ferramentas, streaming, attachments).
+  - Debug panel automaticamente desabilitado para experiência focada na conversação.
+  - Suporte completo a workflows sem visualização do grafo.
+
+- **App.tsx**:
+  - Rota `/platform/debug` redirecionada para `/platform/playground` (backward compatibility).
+  - Nova rota `/platform/playground` registrada.
+
+- **Sidebar/Navegação**:
+  - "Debug Console" renomeado para "Playground" com ícone Play.
+  - Reordenação: Dashboard → Agentes → Workflows → [Playground → Chat] → Admin.
+  - Título "AI Platform" removido da sidebar (marca agora está no Header global).
+
+#### Deprecated
+- **AssistantChat (`src/components/features/chat/AssistantChat.tsx`)**:
+  - Marcado como `@deprecated` - será removido em versão futura.
+  - Substituído por AgentView que oferece melhor tratamento de ferramentas e erros.
+
+#### Correções
+- Problemas de renderização de ferramentas na página de Chat corrigidos.
+- Sincronização de entidade selecionada agora funciona corretamente entre páginas.
+- Query param `?entity_id=...` continua funcionando para deep linking.
+
 ## [0.16.2] - 2025-11-28
 
 ### Persistência e Validação (Fase 8 e 9)

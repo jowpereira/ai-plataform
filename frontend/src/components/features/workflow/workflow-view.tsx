@@ -46,9 +46,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { convertFlowToWorkflowConfig } from "@/utils/workflow-utils";
-import type { WorkflowConfig } from "@/types/workflow";
-import type { Node, Edge } from "@xyflow/react";
 
 type DebugEventHandler = (event: ExtendedResponseStreamEvent | "clear") => void;
 
@@ -405,7 +402,6 @@ export function WorkflowView({
   const [showTimeline, setShowTimeline] = useState(false);
   const [timelineMinimized, setTimelineMinimized] = useState(false);
   const [workflowResult, setWorkflowResult] = useState<string>("");
-  const [currentWorkflowConfig, setCurrentWorkflowConfig] = useState<WorkflowConfig | null>(null);
 
   // HIL (Human-in-the-Loop) state
   const [pendingHilRequests, setPendingHilRequests] = useState<
@@ -788,11 +784,6 @@ export function WorkflowView({
     return recent.map((h) => h.executorId);
   }, [executorHistory, isStreaming]);
 
-  const handleWorkflowChange = useCallback((nodes: Node[], edges: Edge[]) => {
-    const config = convertFlowToWorkflowConfig(nodes, edges);
-    setCurrentWorkflowConfig(config);
-  }, []);
-
   // Handle workflow data sending (structured input)
   const handleSendWorkflowData = useCallback(
     async (inputData: Record<string, unknown>) => {
@@ -815,7 +806,8 @@ export function WorkflowView({
           input_data: inputData,
           conversation_id: currentSession?.conversation_id || undefined, // Pass session conversation_id for checkpoint support
           checkpoint_id: selectedCheckpointId || undefined, // Pass selected checkpoint if any
-          workflow_config: currentWorkflowConfig || undefined,
+          // Nota: workflow_config removido - workflows declarativos já estão definidos no backend
+          // Se precisar suportar edição visual no futuro, converter nodes/edges para steps
         };
 
         // Clear any previous streaming state before starting new workflow execution
@@ -1458,7 +1450,6 @@ export function WorkflowView({
               layoutDirection={layoutDirection}
               onLayoutDirectionChange={setLayoutDirection}
               timelineVisible={showTimeline}
-              onWorkflowChange={handleWorkflowChange}
             />
           )}
           

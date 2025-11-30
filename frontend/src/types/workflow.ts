@@ -38,7 +38,7 @@ export interface EdgeConfig {
  * Workflow configuration (high-level builder format)
  */
 export interface WorkflowConfig {
-  type: "sequential" | "parallel" | "router" | "group_chat" | "handoff";
+  type: "sequential" | "parallel" | "router" | "group_chat" | "handoff" | "magentic";
   nodes?: NodeConfig[];
   edges?: EdgeConfig[];
   steps?: string[];
