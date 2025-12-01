@@ -25,6 +25,8 @@ from src.worker.config import (
     WorkerConfig,
     WorkflowConfig,
     WorkflowStep,
+    RagConfig,
+    RagEmbeddingConfig,
 )
 from src.worker.factory import AgentFactory
 from src.worker.events import get_event_bus, WorkerEventType
@@ -118,6 +120,7 @@ class AgentRunner:
             instructions=self.config.instructions,
             tools=[t.id for t in tool_configs],
             confirmation_mode=self.config.confirmation_mode,
+            knowledge=self.config.knowledge,
         )
         
         # Construir ResourcesConfig
@@ -125,6 +128,29 @@ class AgentRunner:
             models={self.config.model: model_config},
             tools=tool_configs
         )
+        
+        # Configurar RAG se o agente solicitar knowledge
+        rag_config = None
+        if self.config.knowledge and self.config.knowledge.enabled:
+            embedding_model = "text-embedding-ada-002"
+            
+            # Adicionar modelo de embedding aos recursos se não existir
+            if embedding_model not in resources.models:
+                # Tentar usar variáveis de ambiente para configurar o embedding
+                resources.models[embedding_model] = ModelConfig(
+                    type="azure-openai" if os.environ.get("AZURE_OPENAI_API_KEY") else "openai",
+                    deployment=os.environ.get("AZURE_OPENAI_EMBEDDING_DEPLOYMENT", embedding_model)
+                )
+            
+            rag_config = RagConfig(
+                enabled=True,
+                provider="memory",
+                embedding=RagEmbeddingConfig(
+                    model=embedding_model,
+                    dimensions=1536,
+                    normalize=True
+                )
+            )
         
         # Workflow mínimo (necessário para WorkerConfig)
         workflow = WorkflowConfig(
@@ -137,7 +163,8 @@ class AgentRunner:
             name=f"standalone_{self.config.id}",
             resources=resources,
             agents=[agent_config],
-            workflow=workflow
+            workflow=workflow,
+            rag=rag_config
         )
         
     async def setup(self) -> None:

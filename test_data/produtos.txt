@@ -1,0 +1,92 @@
+# Catálogo de Produtos - TechStore Brasil
+
+## Smartphones
+
+### iPhone 15 Pro Max
+- Preço: R$ 9.499,00
+- Armazenamento: 256GB, 512GB, 1TB
+- Cores: Titânio Natural, Titânio Azul, Titânio Branco, Titânio Preto
+- Chip: A17 Pro
+- Câmera: 48MP principal, 12MP ultrawide, 12MP telephoto 5x
+- Garantia: 1 ano Apple
+
+### Samsung Galaxy S24 Ultra
+- Preço: R$ 8.999,00
+- Armazenamento: 256GB, 512GB, 1TB
+- Cores: Titânio Preto, Titânio Cinza, Titânio Violeta, Titânio Amarelo
+- Chip: Snapdragon 8 Gen 3
+- Câmera: 200MP principal, 12MP ultrawide, 50MP telephoto 5x, 10MP telephoto 3x
+- S Pen incluída
+- Garantia: 1 ano Samsung
+
+### Xiaomi 14 Ultra
+- Preço: R$ 6.499,00
+- Armazenamento: 512GB
+- Cores: Preto, Branco
+- Chip: Snapdragon 8 Gen 3
+- Câmera: Leica 50MP quad camera
+- Garantia: 1 ano Xiaomi
+
+## Notebooks
+
+### MacBook Pro 14" M3 Pro
+- Preço: R$ 18.999,00
+- Processador: Apple M3 Pro (11 núcleos CPU, 14 núcleos GPU)
+- RAM: 18GB unificada
+- Armazenamento: 512GB SSD
+- Tela: Liquid Retina XDR 14.2"
+- Bateria: até 17 horas
+- Garantia: 1 ano Apple
+
+### Dell XPS 15
+- Preço: R$ 12.499,00
+- Processador: Intel Core i7-13700H
+- RAM: 16GB DDR5
+- Armazenamento: 512GB SSD NVMe
+- GPU: NVIDIA GeForce RTX 4050
+- Tela: 15.6" OLED 3.5K
+- Garantia: 1 ano Dell Premium
+
+### Lenovo ThinkPad X1 Carbon Gen 11
+- Preço: R$ 14.999,00
+- Processador: Intel Core i7-1365U
+- RAM: 32GB LPDDR5
+- Armazenamento: 1TB SSD
+- Tela: 14" 2.8K OLED
+- Peso: 1.12kg
+- Garantia: 3 anos on-site
+
+## Acessórios
+
+### AirPods Pro 2ª Geração
+- Preço: R$ 2.299,00
+- Cancelamento de ruído ativo
+- Modo Transparência
+- Áudio Espacial
+- Estojo com carregamento MagSafe e USB-C
+- Garantia: 1 ano Apple
+
+### Samsung Galaxy Watch 6 Classic
+- Preço: R$ 2.499,00
+- Tamanhos: 43mm, 47mm
+- Bisel rotativo
+- Monitoramento de saúde completo
+- GPS integrado
+- Garantia: 1 ano Samsung
+
+## Política de Trocas e Devoluções
+- Prazo de 7 dias para devolução sem custo
+- Produto deve estar na embalagem original
+- Nota fiscal obrigatória
+- Troca imediata em caso de defeito
+
+## Formas de Pagamento
+- PIX: 10% de desconto
+- Cartão de crédito: até 12x sem juros
+- Boleto bancário: 5% de desconto
+- Vale-presente aceito
+
+## Frete
+- Grátis para compras acima de R$ 299,00
+- Entrega em até 3 dias úteis para capitais
+- Entrega em até 7 dias úteis para interior

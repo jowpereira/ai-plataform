@@ -3,7 +3,7 @@ import re
 from typing import Any, Dict, List, Literal, Optional, Union
 
 import yaml
-from pydantic import BaseModel, Field, ValidationError, field_validator
+from pydantic import BaseModel, Field, ValidationError, field_validator, model_validator
 
 
 class ToolConfig(BaseModel):
@@ -30,6 +30,77 @@ class ModelConfig(BaseModel):
     model_config = {"extra": "allow"}
 
 
+class RagEmbeddingConfig(BaseModel):
+    """Referência declarativa a um modelo existente para geração de embeddings."""
+
+    model: str = Field(
+        ...,
+        description=(
+            "Identificador de modelo definido em resources.models. Deve apontar para um deployment "
+            "compatible com geração de embeddings (ex.: text-embedding-3-large)."
+        ),
+    )
+    dimensions: Optional[int] = Field(
+        None,
+        ge=1,
+        description="Dimensão esperada dos vetores (utilizado para validação/normalização).",
+    )
+    normalize: bool = Field(True, description="Se verdadeiro, normaliza o vetor retornado pelo provider.")
+
+
+class RagConfig(BaseModel):
+    """Configuração declarativa do pipeline RAG."""
+
+    enabled: bool = Field(False, description="Habilita ou não o contexto RAG")
+    provider: Literal["memory", "azure_search"] = Field(
+        "memory",
+        description="Implementação ativa do provider de contexto",
+    )
+    top_k: int = Field(4, ge=1, le=50, description="Quantidade máxima de trechos retornados")
+    min_score: Optional[float] = Field(
+        0.25,
+        ge=0.0,
+        le=1.0,
+        description="Pontuação mínima de similaridade (0-1) para considerar o trecho",
+    )
+    strategy: Literal["last_message", "conversation"] = Field(
+        "last_message",
+        description="Estratégia de geração da query de busca",
+    )
+    context_prompt: str = Field(
+        "Use os trechos a seguir como base de conhecimento. Cite as fontes disponíveis.",
+        description="Mensagem inicial que antecede os trechos recuperados",
+    )
+    namespace: str = Field(
+        "default",
+        description="Namespace lógico utilizado pelo VectorStore em memória",
+    )
+    embedding: Optional[RagEmbeddingConfig] = Field(
+        None,
+        description="Configuração do provider de embeddings",
+    )
+
+    @model_validator(mode="after")
+    def _validate_embedding(self) -> "RagConfig":
+        if self.enabled and self.provider == "memory" and not self.embedding:
+            raise ValueError(
+                "Configuração de embeddings é obrigatória quando o RAG em memória está habilitado",
+            )
+        return self
+
+
+class AgentKnowledgeConfig(BaseModel):
+    """Configuração de Knowledge Base para um agente específico."""
+    
+    enabled: bool = Field(True, description="Se a knowledge base está habilitada para este agente")
+    collection_ids: List[str] = Field(
+        default_factory=list, 
+        description="IDs das coleções a serem consultadas pelo agente"
+    )
+    top_k: int = Field(5, ge=1, le=50, description="Número máximo de chunks retornados")
+    min_score: float = Field(0.25, ge=0.0, le=1.0, description="Score mínimo de similaridade")
+
+
 class AgentConfig(BaseModel):
     id: str = Field(..., description="Identificador único do agente")
     role: str = Field(..., description="Nome ou papel do agente")
@@ -37,6 +108,10 @@ class AgentConfig(BaseModel):
     model: str = Field(..., description="Referência a um modelo definido em resources")
     instructions: str = Field(..., description="Instruções de sistema para o agente")
     tools: List[str] = Field(default_factory=list, description="Lista de IDs de ferramentas")
+    knowledge: Optional[AgentKnowledgeConfig] = Field(
+        None, 
+        description="Configuração de Knowledge Base para este agente"
+    )
     confirmation_mode: Optional[Literal["cli", "structured", "auto"]] = Field(
         default="cli", 
         description="Modo de interação humana (apenas para HumanAgent)"
@@ -145,6 +220,10 @@ class WorkerConfig(BaseModel):
     agents: List[AgentConfig]
     workflow: WorkflowConfig
     prompts: Optional[PromptsConfig] = Field(None, description="Configuração de templates de prompt")
+    rag: Optional[RagConfig] = Field(
+        None,
+        description="Configuração declarativa de Retrieval Augmented Generation",
+    )
 
 
 # =============================================================================
@@ -166,6 +245,10 @@ class StandaloneAgentConfig(BaseModel):
     model: str = Field(..., description="Model ID (ex: gpt-4o-mini)")
     instructions: str = Field(..., description="Instruções de sistema")
     tools: List[str] = Field(default_factory=list, description="Lista de IDs de ferramentas")
+    knowledge: Optional[AgentKnowledgeConfig] = Field(
+        None, 
+        description="Configuração de Knowledge Base para este agente"
+    )
     confirmation_mode: Optional[Literal["cli", "structured", "auto"]] = Field(
         default="cli", 
         description="Modo de interação humana (apenas para HumanAgent)"

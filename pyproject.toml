@@ -20,6 +20,7 @@ dependencies = [
     "pyyaml>=6.0.3",
     "typer>=0.12.5",
     "aiohttp>=3.13.2",
+    "pypdf>=4.3.1",
 ]
 
 [dependency-groups]

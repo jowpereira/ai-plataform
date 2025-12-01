@@ -1,0 +1,32 @@
+{
+  "name": "Análise Completa de Cliente",
+  "description": "Workflow sequencial que analisa um cliente usando múltiplas bases",
+  "type": "sequential",
+  "agents": [
+    {
+      "name": "Consultor de Produtos",
+      "model": "gpt-4o-mini",
+      "instructions": "Liste os produtos que podem interessar ao cliente baseado no contexto da conversa. Use a base de produtos para recomendar.",
+      "knowledge": {
+        "enabled": true,
+        "collection_ids": ["produtos"],
+        "top_k": 5
+      }
+    },
+    {
+      "name": "Consultor de Vendas",
+      "model": "gpt-4o-mini",
+      "instructions": "Com base nas recomendações anteriores, verifique o histórico de vendas para sugerir promoções ou pacotes.",
+      "knowledge": {
+        "enabled": true,
+        "collection_ids": ["vendas"],
+        "top_k": 5
+      }
+    },
+    {
+      "name": "Finalizador",
+      "model": "gpt-4o-mini",
+      "instructions": "Consolide as informações anteriores em uma proposta clara e atrativa para o cliente."
+    }
+  ]
+}

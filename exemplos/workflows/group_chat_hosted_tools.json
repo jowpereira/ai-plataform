@@ -42,7 +42,7 @@
       "role": "Programador",
       "description": "Executa código e faz análises",
       "model": "gpt-4o-mini",
-      "instructions": "Você é um programador Python. Use executar_codigo para rodar código e calcular para expressões simples.",
+      "instructions": "Você é um programador Python. Use executar_codigo para rodar código e calcular para expressões simples. NÃO use bibliotecas externas como 'requests' ou 'pandas' que não estejam instaladas. Use apenas bibliotecas padrão do Python.",
       "tools": ["executar_codigo", "calcular"]
     },
     {

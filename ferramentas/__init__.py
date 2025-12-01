@@ -49,6 +49,7 @@ from ferramentas import basicas
 from ferramentas import code_interpreter
 from ferramentas import web_search
 from ferramentas import arquivos
+from ferramentas import rag_tools
 
 # Re-exportar ferramentas principais para acesso direto
 from ferramentas.code_interpreter import (
@@ -72,6 +73,7 @@ from ferramentas.arquivos import (
     ler_arquivo,
     escrever_arquivo,
 )
+from ferramentas.rag_tools import search_knowledge_base
 
 __all__ = [
     # Registry
@@ -101,4 +103,5 @@ __all__ = [
     "listar_arquivos",
     "ler_arquivo",
     "escrever_arquivo",
+    "search_knowledge_base",
 ]

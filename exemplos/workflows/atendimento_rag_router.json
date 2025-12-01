@@ -1,0 +1,91 @@
+{
+  "version": "1.0",
+  "name": "Atendimento Escalável",
+  "description": "Workflow que roteia perguntas para o agente especializado correto",
+  "resources": {
+    "models": {
+      "gpt-4o-mini": {
+        "type": "azure-openai",
+        "deployment": "gpt-4o-mini"
+      },
+      "text-embedding-ada-002": {
+        "type": "azure-openai",
+        "deployment": "text-embedding-ada-002"
+      }
+    }
+  },
+  "agents": [
+    {
+      "id": "router_agent",
+      "role": "Router de Atendimento",
+      "model": "gpt-4o-mini",
+      "instructions": "Analise a pergunta do usuário e direcione para o agente especializado correto. Responda APENAS com o ID do destino:\n- 'vendas': perguntas sobre produtos, preços, disponibilidade\n- 'suporte': problemas técnicos, garantia, trocas\n- 'rh': políticas internas, benefícios, férias"
+    },
+    {
+      "id": "vendas_agent",
+      "role": "Especialista Vendas",
+      "model": "gpt-4o-mini",
+      "instructions": "Você é especialista em vendas. Use a base de conhecimento para responder sobre produtos e preços.",
+      "knowledge": {
+        "enabled": true,
+        "collection_ids": ["produtos"],
+        "top_k": 5
+      }
+    },
+    {
+      "id": "suporte_agent",
+      "role": "Especialista Suporte",
+      "model": "gpt-4o-mini",
+      "instructions": "Você é especialista em suporte técnico. Use a base de conhecimento para ajudar com problemas.",
+      "knowledge": {
+        "enabled": true,
+        "collection_ids": ["suporte"],
+        "top_k": 5
+      }
+    },
+    {
+      "id": "rh_agent",
+      "role": "Especialista RH",
+      "model": "gpt-4o-mini",
+      "instructions": "Você é especialista em RH. Use a base de conhecimento para responder sobre políticas e benefícios.",
+      "knowledge": {
+        "enabled": true,
+        "collection_ids": ["rh"],
+        "top_k": 5
+      }
+    }
+  ],
+  "workflow": {
+    "type": "router",
+    "start_step": "router_step",
+    "steps": [
+      {
+        "id": "router_step",
+        "type": "agent",
+        "agent": "router_agent"
+      },
+      {
+        "id": "vendas",
+        "type": "agent",
+        "agent": "vendas_agent"
+      },
+      {
+        "id": "suporte",
+        "type": "agent",
+        "agent": "suporte_agent"
+      },
+      {
+        "id": "rh",
+        "type": "agent",
+        "agent": "rh_agent"
+      }
+    ]
+  },
+  "rag": {
+    "enabled": true,
+    "provider": "memory",
+    "embedding": {
+      "model": "text-embedding-ada-002"
+    }
+  }
+}

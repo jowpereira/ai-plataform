@@ -2,6 +2,77 @@
 
 Todos os marcos notáveis deste projeto serão documentados neste arquivo.
 
+## [0.18.2] - 2025-12-01
+
+### Correções de Bugs e Validação Completa
+
+#### Corrigido
+- **Frontend - Segurança de Null em AgentListPage**
+  - Corrigido acesso inseguro a `agent.tools.length` sem verificação de null
+  - Adicionado operador opcional `?.` e coalescência nula `??` para evitar erros de runtime
+  - Aba de agentes agora carrega corretamente sem crash
+
+- **Frontend - Componente DialogClose Inválido**
+  - Removido prop `onClose` inválida do componente `DialogClose` em `AgentFormModal.tsx`
+  - Corrigido uso incorreto do componente Shadcn/UI
+
+- **Frontend - Conflito de Exports em Stores**
+  - Corrigido re-export duplicado de tipos em `useKnowledgeStore.ts`
+  - Simplificado exports em `stores/index.ts` para evitar conflitos
+
+- **Backend - BOM em Arquivos JSON de Agentes**
+  - Removido UTF-8 BOM de todos os 13 arquivos JSON em `exemplos/agentes/`
+  - Criado script temporário `fix_bom.py` para correção automática
+  - Agentes agora carregam sem erros de encoding
+
+- **Validação Completa de Agentes e Workflows**
+  - Testados todos os 13 agentes standalone - sucesso ✅
+  - Testados todos os 15 workflows - 13 funcionando, 2 corrigidos ✅
+  - Servidor MAIA UI funcionando corretamente na porta 8080
+  - Frontend rebuild sem erros TypeScript
+
+#### Técnico
+- **Build Frontend**: Comando `npm run build` executado com sucesso
+- **Compatibilidade**: Todas as correções mantêm compatibilidade backward
+- **Qualidade**: Código limpo, sem warnings ou erros de linting
+
+---
+
+## [0.18.1] - 2025-11-30
+
+### Refatoração Arquitetural – Embedding Providers
+
+> **Correção:** Módulo de embeddings movido para `src/worker/providers/` seguindo o padrão estabelecido pelo `ProviderRegistry`.
+
+#### Alterado
+- **EmbeddingRegistry (`src/worker/providers/embeddings.py`)**:
+  - Novo registry centralizado para providers de embeddings, alinhado ao padrão `ProviderRegistry`.
+  - `AzureOpenAIEmbeddingProvider`: Provider assíncrono com retries, normalização e logs.
+  - `OpenAIEmbeddingProvider`: Provider para OpenAI nativo com mesma interface.
+  - `EmbeddingRegistry.create_provider()`: Factory method que delega criação baseado em `ModelConfig.type`.
+- **Providers (`src/worker/providers/__init__.py`)**: Exporta `EmbeddingRegistry`, `AzureOpenAIEmbeddingProvider`, `OpenAIEmbeddingProvider`.
+- **RAG Interfaces (`src/worker/rag/interfaces.py`)**: Reutiliza tipos de `src/worker/providers/embeddings` ao invés de redefinir.
+- **RAG Runtime (`src/worker/rag/__init__.py`)**: Usa `EmbeddingRegistry.create_provider()` para instanciar embeddings.
+
+#### Removido
+- **Módulo `src/worker/rag/embeddings/`**: Removido por quebrar padrão arquitetural. Funcionalidade migrada para `src/worker/providers/embeddings.py`.
+
+---
+
+## [0.18.0] - 2025-11-29
+
+### RAG Runtime – Fase 1 (Configuração + Contexto)
+
+#### Adicionado
+- **Configuração RAG (`src/worker/config.py`)**: `RagConfig` e `RagEmbeddingConfig` referenciam `resources.models`, permitindo reaproveitar credenciais e deployments oficiais para embeddings.
+- **Vector Store em Memória (`src/worker/rag/stores/memory.py`)**: Armazena vetores por namespace, aplica filtros de metadata e calcula similaridade por cosseno.
+- **RAGContextProvider (`src/worker/rag/context.py`)**: Constrói consultas a partir do histórico, busca no store e injeta mensagens de contexto.
+- **Runtime Helper (`src/worker/rag/__init__.py`)**: Orquestra montagem de embeddings, store e provider, expondo `get_context_provider()`.
+- **Ferramenta `search_knowledge_base` (`ferramentas/rag_tools.py`)**: Expõe busca na base vetorial como tool oficial.
+
+#### Alterado
+- **Factory (`src/worker/factory.py`)**: Inicializa runtime RAG durante bootstrap e injeta `context_providers` nos agentes.
+
 ## [0.17.1] - 2025-11-29
 
 ### Correções Playground e Serialização de Eventos

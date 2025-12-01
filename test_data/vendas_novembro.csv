@@ -1,0 +1,35 @@
+data,produto,categoria,quantidade,valor_unitario,valor_total,cliente,cidade,estado,forma_pagamento
+2024-11-01,iPhone 15 Pro Max 256GB,Smartphones,2,9499.00,18998.00,Maria Silva,São Paulo,SP,Cartão 12x
+2024-11-01,AirPods Pro 2,Acessórios,3,2299.00,6897.00,João Santos,Rio de Janeiro,RJ,PIX
+2024-11-02,Samsung Galaxy S24 Ultra,Smartphones,1,8999.00,8999.00,Ana Costa,Belo Horizonte,MG,Cartão 10x
+2024-11-02,MacBook Pro 14" M3 Pro,Notebooks,1,18999.00,18999.00,Carlos Oliveira,Curitiba,PR,PIX
+2024-11-03,Dell XPS 15,Notebooks,2,12499.00,24998.00,Fernanda Lima,Porto Alegre,RS,Boleto
+2024-11-03,Galaxy Watch 6 Classic,Acessórios,5,2499.00,12495.00,Pedro Souza,Salvador,BA,Cartão 6x
+2024-11-04,Xiaomi 14 Ultra,Smartphones,3,6499.00,19497.00,Lucia Ferreira,Brasília,DF,PIX
+2024-11-05,ThinkPad X1 Carbon,Notebooks,1,14999.00,14999.00,Roberto Alves,Recife,PE,Cartão 12x
+2024-11-05,iPhone 15 Pro Max 512GB,Smartphones,1,10999.00,10999.00,Amanda Rodrigues,Fortaleza,CE,PIX
+2024-11-06,AirPods Pro 2,Acessórios,2,2299.00,4598.00,Marcos Pereira,Manaus,AM,Cartão 3x
+2024-11-07,Samsung Galaxy S24 Ultra,Smartphones,2,8999.00,17998.00,Patricia Martins,Goiânia,GO,PIX
+2024-11-08,MacBook Pro 14" M3 Pro,Notebooks,2,18999.00,37998.00,Ricardo Gomes,Campinas,SP,Cartão 12x
+2024-11-09,Dell XPS 15,Notebooks,1,12499.00,12499.00,Juliana Barbosa,Florianópolis,SC,Boleto
+2024-11-10,Galaxy Watch 6 Classic,Acessórios,3,2499.00,7497.00,Fernando Castro,Vitória,ES,PIX
+2024-11-11,Xiaomi 14 Ultra,Smartphones,2,6499.00,12998.00,Camila Dias,Natal,RN,Cartão 8x
+2024-11-12,iPhone 15 Pro Max 1TB,Smartphones,1,12499.00,12499.00,Bruno Ribeiro,João Pessoa,PB,PIX
+2024-11-13,ThinkPad X1 Carbon,Notebooks,2,14999.00,29998.00,Daniela Nunes,Maceió,AL,Cartão 12x
+2024-11-14,AirPods Pro 2,Acessórios,4,2299.00,9196.00,Gustavo Moreira,Aracaju,SE,PIX
+2024-11-15,Samsung Galaxy S24 Ultra,Smartphones,3,8999.00,26997.00,Renata Cardoso,Teresina,PI,Cartão 10x
+2024-11-16,MacBook Pro 14" M3 Pro,Notebooks,1,18999.00,18999.00,Eduardo Freitas,São Luís,MA,Boleto
+2024-11-17,Dell XPS 15,Notebooks,3,12499.00,37497.00,Tatiana Mendes,Cuiabá,MT,PIX
+2024-11-18,Galaxy Watch 6 Classic,Acessórios,2,2499.00,4998.00,Leandro Correia,Campo Grande,MS,Cartão 4x
+2024-11-19,Xiaomi 14 Ultra,Smartphones,4,6499.00,25996.00,Vanessa Teixeira,Belém,PA,PIX
+2024-11-20,iPhone 15 Pro Max 256GB,Smartphones,2,9499.00,18998.00,Rodrigo Pinto,Macapá,AP,Cartão 12x
+2024-11-21,ThinkPad X1 Carbon,Notebooks,1,14999.00,14999.00,Carolina Lopes,Rio Branco,AC,PIX
+2024-11-22,AirPods Pro 2,Acessórios,6,2299.00,13794.00,Marcelo Azevedo,Porto Velho,RO,Cartão 6x
+2024-11-23,Samsung Galaxy S24 Ultra,Smartphones,2,8999.00,17998.00,Priscila Cunha,Boa Vista,RR,PIX
+2024-11-24,MacBook Pro 14" M3 Pro,Notebooks,2,18999.00,37998.00,Alexandre Vieira,Palmas,TO,Cartão 12x
+2024-11-25,Dell XPS 15,Notebooks,1,12499.00,12499.00,Mariana Campos,Santo André,SP,Boleto
+2024-11-26,Galaxy Watch 6 Classic,Acessórios,4,2499.00,9996.00,Thiago Rocha,Osasco,SP,PIX
+2024-11-27,Xiaomi 14 Ultra,Smartphones,2,6499.00,12998.00,Beatriz Moura,Guarulhos,SP,Cartão 8x
+2024-11-28,iPhone 15 Pro Max 512GB,Smartphones,3,10999.00,32997.00,Lucas Nascimento,São Bernardo,SP,PIX
+2024-11-29,ThinkPad X1 Carbon,Notebooks,1,14999.00,14999.00,Isabela Araujo,Sorocaba,SP,Cartão 12x
+2024-11-30,AirPods Pro 2,Acessórios,5,2299.00,11495.00,Rafael Monteiro,Ribeirão Preto,SP,PIX

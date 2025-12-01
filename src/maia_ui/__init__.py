@@ -114,9 +114,25 @@ def serve(
         auth_enabled: Whether to enable Bearer token authentication
         auth_token: Custom authentication token (auto-generated if not provided with auth_enabled=True)
     """
+    import os
     import re
+    from pathlib import Path
 
     import uvicorn
+    from dotenv import load_dotenv
+
+    # Carregar variáveis de ambiente do .env
+    # Prioriza o diretório de entidades, depois o diretório atual
+    env_paths = []
+    if entities_dir:
+        env_paths.append(Path(entities_dir) / ".env")
+    env_paths.append(Path.cwd() / ".env")
+    
+    for env_path in env_paths:
+        if env_path.exists():
+            load_dotenv(env_path, override=True)
+            logger.info(f"Loaded environment from {env_path}")
+            break
 
     # Validate host parameter early for security
     if not re.match(r"^(localhost|127\.0\.0\.1|0\.0\.0\.0|[a-zA-Z0-9.-]+)$", host):
@@ -134,7 +150,6 @@ def serve(
 
     # Handle authentication configuration
     if auth_enabled:
-        import os
         import secrets
 
         # Check if token is in environment variable first

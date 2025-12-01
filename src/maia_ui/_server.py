@@ -12,10 +12,11 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel, ValidationError
 
 from ._deployment import DeploymentManager
 from ._discovery import EntityDiscovery
@@ -24,11 +25,28 @@ from ._mapper import MessageMapper
 from ._openai import OpenAIExecutor
 from .models import AgentFrameworkRequest, MetaResponse, OpenAIError
 from .models._discovery_models import Deployment, DeploymentConfig, DiscoveryResponse, EntityInfo
+from src.worker.config import RagConfig
+from src.worker.rag import register_vector_store, configure_rag_runtime_from_config
+from src.worker.rag.knowledge.loader import UnsupportedFileError
+from src.worker.rag.knowledge.service import KnowledgeBaseService
 
 logger = logging.getLogger(__name__)
 
 # Diretório raiz do projeto (onde está o run.py)
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+
+class KnowledgeCollectionRequest(BaseModel):
+    name: str
+    description: str | None = None
+    namespace: str | None = None
+    tags: list[str] | None = None
+
+
+class KnowledgeSearchRequest(BaseModel):
+    query: str
+    collection_id: str | None = None
+    top_k: int = 5
 
 
 # No AuthMiddleware class needed - we'll use the decorator pattern instead
@@ -74,6 +92,12 @@ class DevServer:
         self.deployment_manager = DeploymentManager()
         self._app: FastAPI | None = None
         self._pending_entities: list[Any] | None = None
+        self._app_dir = PROJECT_ROOT / ".maia"
+        self._app_dir.mkdir(parents=True, exist_ok=True)
+        self._rag_config_path = self._app_dir / "rag_config.json"
+        self._knowledge_root = self._app_dir / "knowledge"
+        self._rag_config: RagConfig | None = None
+        self._knowledge_base: KnowledgeBaseService | None = None
 
     def _is_dev_mode(self) -> bool:
         """Check if running in developer mode.
@@ -351,8 +375,17 @@ class DevServer:
         async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             # Startup
             logger.info("Starting MAIA Server")
+            
+            # Inicializar Knowledge Base e RAG Runtime ANTES do executor
+            # Isso garante que agentes com knowledge config possam usar o RAG
+            rag_config = self._get_or_create_rag_config()
+            knowledge_base = self._get_knowledge_base()
+            await knowledge_base.sync_with_config(rag_config)
+            
+            # Agora inicializar os executores (que podem carregar agentes com knowledge)
             await self._ensure_executor()
             await self._ensure_openai_executor()  # Initialize OpenAI executor
+            
             yield
             # Shutdown
             logger.info("Shutting down MAIA Server")
@@ -1349,6 +1382,144 @@ class DevServer:
                 logger.error(f"Error listing tools: {e}")
                 raise HTTPException(status_code=500, detail=f"Failed to list tools: {e!s}") from e
 
+        # ============================================================================
+        # RAG Configuration Endpoints
+        # ============================================================================
+
+        @app.get("/v1/rag")
+        async def get_rag_config() -> dict[str, Any]:
+            """Get current RAG configuration."""
+            config = self._get_or_create_rag_config()
+            return config.model_dump()
+
+        @app.post("/v1/rag")
+        async def update_rag_config(config: dict[str, Any]) -> dict[str, Any]:
+            """Update RAG configuration."""
+            try:
+                validated_config = RagConfig(**config)
+            except ValidationError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+            self._persist_rag_config(validated_config)
+            knowledge_base = self._get_knowledge_base()
+            await knowledge_base.sync_with_config(validated_config)
+
+            logger.info(
+                "RAG config updated: enabled=%s provider=%s",
+                validated_config.enabled,
+                validated_config.provider,
+            )
+            return validated_config.model_dump()
+
+        # ============================================================================
+        # Knowledge Base Endpoints
+        # ============================================================================
+
+        @app.get("/v1/knowledge/collections")
+        async def list_collections() -> JSONResponse:
+            kb = self._get_knowledge_base()
+            collections = [json.loads(c.model_dump_json()) for c in kb.list_collections()]
+            return JSONResponse(content={"data": collections, "count": len(collections)})
+
+        @app.post("/v1/knowledge/collections")
+        async def create_collection(payload: KnowledgeCollectionRequest) -> JSONResponse:
+            try:
+                kb = self._get_knowledge_base()
+                collection = kb.create_collection(
+                    name=payload.name,
+                    description=payload.description,
+                    namespace=payload.namespace,
+                    tags=payload.tags,
+                )
+                # Usar model_dump_json() para serialização correta de datetime
+                return JSONResponse(content=json.loads(collection.model_dump_json()))
+            except Exception as e:
+                logger.error(f"Erro ao criar coleção: {e}")
+                raise HTTPException(status_code=500, detail=str(e)) from e
+
+        @app.delete("/v1/knowledge/collections/{collection_id}")
+        async def delete_collection(collection_id: str) -> dict[str, Any]:
+            kb = self._get_knowledge_base()
+            try:
+                await kb.delete_collection(collection_id)
+            except ValueError as exc:
+                raise HTTPException(status_code=404, detail=str(exc)) from exc
+            return {"success": True}
+
+        @app.get("/v1/knowledge/collections/{collection_id}/documents")
+        async def list_documents(collection_id: str) -> dict[str, Any]:
+            kb = self._get_knowledge_base()
+            try:
+                kb.get_collection(collection_id)
+            except ValueError as exc:
+                raise HTTPException(status_code=404, detail=str(exc)) from exc
+            documents = [doc.model_dump(mode="json") for doc in kb.list_documents(collection_id)]
+            return {"data": documents, "count": len(documents)}
+
+        @app.delete("/v1/knowledge/documents/{document_id}")
+        async def delete_document(document_id: str) -> dict[str, Any]:
+            kb = self._get_knowledge_base()
+            try:
+                await kb.delete_document(document_id)
+            except ValueError as exc:
+                raise HTTPException(status_code=404, detail=str(exc)) from exc
+            return {"success": True}
+
+        @app.post("/v1/knowledge/collections/{collection_id}/ingest")
+        async def ingest_documents(
+            collection_id: str,
+            files: list[UploadFile] = File(...),
+            metadata: str | None = Form(None),
+        ) -> dict[str, Any]:
+            kb = self._get_knowledge_base()
+            if not files:
+                raise HTTPException(status_code=400, detail="Envie ao menos um arquivo")
+
+            metadata_payload = self._parse_metadata_payload(metadata)
+            try:
+                kb.get_collection(collection_id)
+            except ValueError as exc:
+                raise HTTPException(status_code=404, detail=str(exc)) from exc
+            ingested: list[dict[str, Any]] = []
+
+            for upload in files:
+                content = await upload.read()
+                try:
+                    result = await kb.ingest_file(
+                        collection_id=collection_id,
+                        filename=upload.filename or "arquivo_sem_nome",
+                        content_type=upload.content_type,
+                        raw_bytes=content,
+                        metadata=metadata_payload,
+                    )
+                except UnsupportedFileError as exc:
+                    raise HTTPException(status_code=400, detail=str(exc)) from exc
+                except ValueError as exc:
+                    raise HTTPException(status_code=400, detail=str(exc)) from exc
+                ingested.append(
+                    {
+                        "document": result.document.model_dump(mode="json"),
+                        "collection": result.collection.model_dump(mode="json"),
+                    }
+                )
+
+            return {"ingested": ingested, "count": len(ingested)}
+
+        @app.post("/v1/knowledge/search")
+        async def search_knowledge(payload: KnowledgeSearchRequest) -> dict[str, Any]:
+            kb = self._get_knowledge_base()
+            try:
+                results = await kb.search(
+                    query=payload.query,
+                    collection_id=payload.collection_id,
+                    top_k=min(max(payload.top_k, 1), 20),
+                )
+            except ValueError as exc:
+                message = str(exc)
+                status_code = 404 if "Coleção" in message else 400
+                raise HTTPException(status_code=status_code, detail=message) from exc
+            return {"data": [result.model_dump(mode="json") for result in results], "count": len(results)}
+
         @app.post("/v1/tools/{tool_id}/invoke")
         async def invoke_tool(tool_id: str, raw_request: Request) -> dict[str, Any]:
             """Invoke a discovered tool directly (dev-only helper).
@@ -1558,6 +1729,75 @@ class DevServer:
         if self._pending_entities is None:
             self._pending_entities = []
         self._pending_entities.extend(entities)
+
+    def _get_or_create_rag_config(self) -> RagConfig:
+        if self._rag_config is not None:
+            return self._rag_config
+
+        if self._rag_config_path.exists():
+            try:
+                payload = json.loads(self._rag_config_path.read_text(encoding="utf-8"))
+                self._rag_config = RagConfig(**payload)
+            except Exception as exc:  # pragma: no cover - fallback defensivo
+                logger.warning("Falha ao carregar rag_config, usando padrão: %s", exc)
+                self._rag_config = self._create_default_rag_config()
+        else:
+            self._rag_config = self._create_default_rag_config()
+            self._persist_rag_config(self._rag_config)
+        return self._rag_config
+
+    def _create_default_rag_config(self) -> RagConfig:
+        """Cria configuração RAG padrão usando variáveis de ambiente."""
+        import os
+        from src.worker.config import RagEmbeddingConfig
+        
+        # Detecta modelo de embedding do .env
+        embedding_model = os.getenv("AZURE_OPENAI_EMBEDDING_DEPLOYMENT")
+        
+        if embedding_model:
+            embedding_config = RagEmbeddingConfig(model=embedding_model)
+            logger.info(f"RAG configurado com modelo de embedding: {embedding_model}")
+            return RagConfig(
+                enabled=True,
+                embedding=embedding_config,
+            )
+        else:
+            logger.warning("Base de conhecimento desativada - configuração de embedding ausente")
+            return RagConfig(enabled=False)
+
+    def _persist_rag_config(self, config: RagConfig) -> None:
+        self._rag_config = config
+        payload = config.model_dump()
+        self._rag_config_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    def _get_cached_rag_config(self) -> RagConfig | None:
+        return self._rag_config
+
+    def _get_knowledge_base(self) -> KnowledgeBaseService:
+        if self._knowledge_base is None:
+            rag_config = self._get_or_create_rag_config()
+            self._knowledge_base = KnowledgeBaseService(
+                root_dir=self._knowledge_root,
+                rag_config_getter=self._get_cached_rag_config,
+            )
+            # Registrar o VectorStore para uso pelo RAG
+            register_vector_store(self._knowledge_base.get_vector_store())
+            # Configurar o RAG runtime para que agentes possam usar create_agent_context_provider
+            configure_rag_runtime_from_config(rag_config)
+            logger.info("Knowledge Base e RAG runtime inicializados")
+        return self._knowledge_base
+
+    @staticmethod
+    def _parse_metadata_payload(metadata_raw: str | None) -> dict[str, Any]:
+        if not metadata_raw:
+            return {}
+        try:
+            payload = json.loads(metadata_raw)
+        except json.JSONDecodeError as exc:  # pragma: no cover - validação simples
+            raise HTTPException(status_code=400, detail=f"Metadados inválidos: {exc}") from exc
+        if not isinstance(payload, dict):
+            raise HTTPException(status_code=400, detail="Metadados devem ser um objeto JSON")
+        return payload
 
     def get_app(self) -> FastAPI:
         """Get the FastAPI application instance."""

@@ -113,6 +113,14 @@ Este documento rasteia o progresso detalhado do desenvolvimento do módulo worke
 - [x] **RAG & Data Strategy**
     - [x] Criar módulo `src/worker/rag` (Loader, Splitter, Store).
     - [x] Expor ferramentas RAG em `tools/rag_tools.py`.
+    - [x] **Fase 1 - Runtime e Ferramentas**
+        - [x] Alinhar `RagConfig`/`RagEmbeddingConfig` com `resources.models` para reutilizar `ModelConfig`.
+        - [x] Implementar `AzureOpenAIEmbeddings` assíncrono com retries e normalização.
+        - [x] Criar `InMemoryVectorStore` com filtros por namespace e metadata.
+        - [x] Implementar `RAGContextProvider` e runtime integrado na `factory`.
+        - [x] Disponibilizar ferramenta `search_knowledge_base` registrada no catálogo oficial.
+        - [ ] Documentar fluxo de configuração RAG (README/CLI/DevUI).
+        - [ ] Definir plano de ingestão/seed automatizado para a base vetorial.
 - [x] **Tool Discovery**
     - [x] Implementar `src/worker/discovery.py` para escanear ferramentas.
 

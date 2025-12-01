@@ -21,11 +21,161 @@ PROJECT_ROOT = Path(__file__).resolve().parents[0]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.worker.config import ConfigLoader, StandaloneAgentConfig, WorkerConfig
+from src.worker.config import ConfigLoader, StandaloneAgentConfig, WorkerConfig, RagConfig, RagEmbeddingConfig
 from src.worker.engine import WorkflowEngine
 from src.worker.runner import AgentRunner
+from src.worker.rag.knowledge.service import KnowledgeBaseService
+
+from src.worker.rag import register_vector_store
 
 app = typer.Typer(add_completion=False, help="Executor genérico para workers do Microsoft Agent Framework.")
+rag_app = typer.Typer(help="Gerenciamento de RAG (Knowledge Base)")
+app.add_typer(rag_app, name="rag")
+
+
+def get_rag_service() -> KnowledgeBaseService:
+    """Inicializa o serviço de Knowledge Base para CLI."""
+    load_dotenv()
+    
+    # Configuração padrão para CLI
+    def config_getter() -> RagConfig:
+        return RagConfig(
+            enabled=True,
+            provider="memory",
+            embedding=RagEmbeddingConfig(
+                model="text-embedding-ada-002",
+                dimensions=1536,
+                normalize=True
+            )
+        )
+    
+    root_dir = PROJECT_ROOT / ".maia" / "knowledge"
+    return KnowledgeBaseService(
+        root_dir=root_dir,
+        rag_config_getter=config_getter
+    )
+
+
+async def setup_rag_for_execution():
+    """Prepara o ambiente RAG para execução de agentes."""
+    try:
+        service = get_rag_service()
+        # Carregar dados persistidos para a memória
+        await service.rebuild_vector_index(force_reembed=False)
+        # Registrar store para ser usado pelo RagRuntime
+        register_vector_store(service.get_vector_store())
+        print(f"📚 RAG inicializado com {len(service.list_documents(collection_id=''))} documentos (total)")
+    except Exception as e:
+        print(f"⚠️ Falha ao inicializar RAG: {e}")
+
+
+@rag_app.command("init")
+def rag_init(
+    name: str = typer.Option(..., "--name", "-n", help="Nome da coleção"),
+    description: str = typer.Option("", "--desc", "-d", help="Descrição da coleção"),
+):
+    """Cria uma nova coleção na Knowledge Base."""
+    service = get_rag_service()
+    try:
+        collection = service.create_collection(name=name, description=description)
+        print(f"✅ Coleção '{name}' criada com sucesso!")
+        print(f"   ID: {collection.id}")
+        print(f"   Namespace: {collection.namespace}")
+    except Exception as e:
+        print(f"❌ Erro ao criar coleção: {e}")
+
+
+@rag_app.command("list")
+def rag_list():
+    """Lista todas as coleções existentes."""
+    service = get_rag_service()
+    collections = service.list_collections()
+    print(f"📚 Encontradas {len(collections)} coleções:")
+    for col in collections:
+        print(f"   - {col.name} (ID: {col.id})")
+        print(f"     Docs: {col.document_count} | Chunks: {col.chunk_count}")
+
+
+@rag_app.command("ingest")
+def rag_ingest(
+    collection_name: str = typer.Option(..., "--collection", "-c", help="Nome da coleção destino"),
+    file_path: str = typer.Option(..., "--file", "-f", help="Caminho do arquivo para ingestão"),
+):
+    """Ingere um arquivo em uma coleção."""
+    service = get_rag_service()
+    
+    # Encontrar ID da coleção pelo nome
+    collections = service.list_collections()
+    target_col = next((c for c in collections if c.name == collection_name), None)
+    
+    if not target_col:
+        print(f"❌ Coleção '{collection_name}' não encontrada.")
+        return
+
+    path = Path(file_path)
+    if not path.exists():
+        print(f"❌ Arquivo não encontrado: {file_path}")
+        return
+
+    print(f"📤 Ingerindo '{path.name}' em '{collection_name}'...")
+    
+    async def _ingest():
+        with open(path, "rb") as f:
+            content = f.read()
+        
+        try:
+            result = await service.ingest_file(
+                collection_id=target_col.id,
+                filename=path.name,
+                content_type="text/plain", # Simplificação para CLI
+                raw_bytes=content
+            )
+            print(f"✅ Ingestão concluída!")
+            print(f"   Documento ID: {result.document.id}")
+            print(f"   Chunks gerados: {result.document.chunk_count}")
+        except Exception as e:
+            print(f"❌ Erro na ingestão: {e}")
+
+    asyncio.run(_ingest())
+
+
+@rag_app.command("search")
+def rag_search(
+    query: str = typer.Option(..., "--query", "-q", help="Texto da busca"),
+    collection_name: str = typer.Option(None, "--collection", "-c", help="Filtrar por coleção (opcional)"),
+    top_k: int = typer.Option(3, "--top", "-k", help="Número de resultados"),
+):
+    """Realiza busca semântica na Knowledge Base."""
+    service = get_rag_service()
+    
+    col_id = None
+    if collection_name:
+        collections = service.list_collections()
+        target_col = next((c for c in collections if c.name == collection_name), None)
+        if target_col:
+            col_id = target_col.id
+        else:
+            print(f"⚠️ Coleção '{collection_name}' não encontrada. Buscando em tudo.")
+
+    async def _search():
+        try:
+            # Carregar índice antes de buscar
+            await service.rebuild_vector_index(force_reembed=False)
+            
+            results = await service.search(query=query, collection_id=col_id, top_k=top_k)
+            print(f"\n🔍 Resultados para: '{query}'")
+            if not results:
+                print("   Nenhum resultado encontrado.")
+                return
+                
+            for i, res in enumerate(results, 1):
+                print(f"\n   #{i} [Score: {res.score:.3f}]")
+                print(f"   📄 Doc: {res.metadata.get('source', 'N/A')}")
+                print(f"   📝 Conteúdo: {res.content[:200]}...")
+        except Exception as e:
+            print(f"❌ Erro na busca: {e}")
+
+    asyncio.run(_search())
 
 
 def load_all_examples_for_ui():
@@ -206,6 +356,35 @@ def run(
 
     async def _run_agent_async(config: StandaloneAgentConfig):
         """Executa agente standalone via AgentRunner."""
+        
+        # Resolver nomes de coleções para IDs se necessário
+        if config.knowledge and config.knowledge.collection_ids:
+            try:
+                service = get_rag_service()
+                resolved_ids = []
+                for col_ref in config.knowledge.collection_ids:
+                    # Tentar encontrar por nome
+                    collections = service.list_collections()
+                    target_col = next((c for c in collections if c.name == col_ref), None)
+                    
+                    if target_col:
+                        resolved_ids.append(target_col.id)
+                    else:
+                        # Assumir que já é um ID se não encontrar por nome
+                        try:
+                            if service.get_collection(col_ref):
+                                resolved_ids.append(col_ref)
+                        except ValueError:
+                            print(f"⚠️ Aviso: Coleção '{col_ref}' não encontrada (ignorada)")
+                
+                if resolved_ids:
+                    print(f"🔍 Coleções resolvidas: {config.knowledge.collection_ids} -> {resolved_ids}")
+                    config.knowledge.collection_ids = resolved_ids
+                else:
+                    print(f"⚠️ Aviso: Nenhuma coleção válida encontrada para {config.knowledge.collection_ids}")
+            except Exception as e:
+                print(f"⚠️ Erro ao resolver coleções: {e}")
+
         # Configurar reporter visual
         try:
             from src.worker.events import get_event_bus
@@ -233,10 +412,18 @@ def run(
     if config_type == "agent":
         config = loader.load_agent()
         print(f"🤖 Executando agente: {config.id} ({config.role})")
+        
+        # Inicializar RAG se necessário
+        asyncio.run(setup_rag_for_execution())
+        
         asyncio.run(_run_agent_async(config))
     else:
         config = loader.load()
         print(f"⚙️ Executando workflow: {config.name}")
+        
+        # Inicializar RAG se necessário
+        asyncio.run(setup_rag_for_execution())
+        
         asyncio.run(_run_workflow_async(config))
 
 

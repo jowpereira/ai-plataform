@@ -477,6 +477,11 @@ class EntityDiscovery:
 
         agents_dir = entities_dir / "agentes"
         workflows_dir = entities_dir / "workflows"
+        
+        # Também procurar em exemplos/ se existir
+        exemplos_dir = entities_dir / "exemplos"
+        exemplos_agents_dir = exemplos_dir / "agentes"
+        exemplos_workflows_dir = exemplos_dir / "workflows"
 
         # If the repo contains structured folders, prioritize them exclusively
         if has_structured_folders:
@@ -484,6 +489,14 @@ class EntityDiscovery:
                 _scan_dir(agents_dir)
             if workflows_dir.exists():
                 _scan_dir(workflows_dir)
+            return
+        
+        # Também escanear pasta exemplos se existir
+        if exemplos_dir.exists():
+            if exemplos_agents_dir.exists():
+                _scan_dir(exemplos_agents_dir)
+            if exemplos_workflows_dir.exists():
+                _scan_dir(exemplos_workflows_dir)
             return
 
         # Start scan from root (legacy mode)
@@ -1097,6 +1110,7 @@ class EntityDiscovery:
 
         from src.worker.config import (
             AgentConfig,
+            AgentKnowledgeConfig,
             ModelConfig,
             ResourcesConfig,
             ToolConfig,
@@ -1144,6 +1158,67 @@ class EntityDiscovery:
                     agent_id,
                 )
 
+        # Extrair configuração de Knowledge Base (se presente)
+        knowledge_config = None
+        knowledge_data = data.get("knowledge")
+        if knowledge_data and isinstance(knowledge_data, dict):
+            if knowledge_data.get("enabled", True):  # Enabled by default se presente
+                collection_ids = knowledge_data.get("collection_ids", [])
+                
+                # Tentar resolver nomes de coleções para UUIDs
+                if collection_ids:
+                    try:
+                        from src.worker.config import RagConfig
+                        from src.worker.rag.knowledge.service import KnowledgeBaseService
+                        
+                        # Calcular caminhos (assumindo estrutura padrão do projeto)
+                        project_root = Path(__file__).resolve().parents[2]
+                        rag_config_path = project_root / ".maia" / "rag_config.json"
+                        knowledge_root = project_root / ".maia" / "knowledge"
+                        
+                        # Carregar config se existir
+                        rag_config = None
+                        if rag_config_path.exists():
+                            with open(rag_config_path, "r", encoding="utf-8") as f:
+                                rag_config = RagConfig(**json.load(f))
+                        
+                        if rag_config and knowledge_root.exists():
+                            service = KnowledgeBaseService(
+                                root_dir=knowledge_root,
+                                rag_config_getter=lambda: rag_config
+                            )
+                            collections = service.list_collections()
+                            name_map = {c.name: c.id for c in collections}
+                            
+                            resolved_ids = []
+                            for cid in collection_ids:
+                                # Se for UUID válido, mantém
+                                try:
+                                    uuid.UUID(str(cid))
+                                    resolved_ids.append(cid)
+                                except ValueError:
+                                    # Se não for UUID, tenta buscar pelo nome
+                                    if cid in name_map:
+                                        resolved_ids.append(name_map[cid])
+                                        logger.info(f"🔍 Resolvido coleção '{cid}' -> '{name_map[cid]}'")
+                                    else:
+                                        resolved_ids.append(cid)
+                            collection_ids = resolved_ids
+                    except Exception as e:
+                        logger.warning(f"Falha ao resolver IDs de coleção: {e}")
+
+                if collection_ids:
+                    knowledge_config = AgentKnowledgeConfig(
+                        enabled=True,
+                        collection_ids=collection_ids,
+                        top_k=knowledge_data.get("top_k", 5),
+                        min_score=knowledge_data.get("min_score", 0.25),
+                    )
+                    logger.info(
+                        f"📚 Agente '{agent_id}' configurado com Knowledge Base: "
+                        f"collections={collection_ids}, top_k={knowledge_config.top_k}"
+                    )
+
         # Construir configuração completa do Worker
         worker_config = WorkerConfig(
             name=role,
@@ -1159,6 +1234,7 @@ class EntityDiscovery:
                     model=model_id,
                     instructions=instructions,
                     tools=valid_tool_ids,
+                    knowledge=knowledge_config,
                 )
             ],
             workflow=WorkflowConfig(

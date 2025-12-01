@@ -8,6 +8,7 @@ from agent_framework import ChatAgent
 
 from src.worker.config import AgentConfig, ModelConfig, ToolConfig, WorkerConfig
 from src.worker.providers import ProviderRegistry
+from src.worker.rag import configure_rag_runtime, get_context_provider, create_agent_context_provider
 from src.worker.tools import ToolRegistry, ToolDefinition, ToolType, ApprovalMode
 from src.worker.middleware import EventMiddleware
 from src.worker.middleware.hygiene import MessageSanitizerMiddleware
@@ -266,6 +267,8 @@ class AgentFactory:
         self.preloaded_agents = preloaded_agents or {}
         # Inicializa o registry de providers
         self._provider_registry = ProviderRegistry()
+        self._rag_runtime = configure_rag_runtime(config)
+        self._rag_provider = get_context_provider()
 
     def create_client(self, model_ref: str) -> Any:
         """
@@ -365,6 +368,29 @@ class AgentFactory:
         base_desc = agent_conf.description or display_name
         description = f"Participant ID: {agent_name}. Role/Description: {base_desc}"
 
+        # Determinar context_provider: específico por agente ou global
+        context_provider = None
+        if agent_conf.knowledge and agent_conf.knowledge.enabled and agent_conf.knowledge.collection_ids:
+            # Criar provider específico com filtros de coleção
+            context_provider = create_agent_context_provider(
+                collection_ids=agent_conf.knowledge.collection_ids,
+                top_k=agent_conf.knowledge.top_k,
+                min_score=agent_conf.knowledge.min_score,
+            )
+            if context_provider:
+                logger.info(
+                    f"🔗 Agente '{agent_id}' usando Knowledge Base com collections: "
+                    f"{agent_conf.knowledge.collection_ids}"
+                )
+            else:
+                logger.warning(
+                    f"⚠️ Agente '{agent_id}' tem knowledge configurada mas RAG runtime não está ativo. "
+                    f"Verifique se o RAG está habilitado na configuração."
+                )
+        else:
+            # Usar provider global (se disponível)
+            context_provider = self._rag_provider
+
         agent = ChatAgent(
             id=agent_conf.id,
             name=agent_name,
@@ -372,6 +398,7 @@ class AgentFactory:
             instructions=agent_conf.instructions,
             chat_client=client,
             tools=loaded_tools if loaded_tools else None,
+            context_providers=context_provider,
             middleware=applied_middleware or None,
         )
 
