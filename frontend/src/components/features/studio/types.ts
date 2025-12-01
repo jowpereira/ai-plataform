@@ -10,6 +10,13 @@ export interface ModelConfig {
   env_vars?: Record<string, string>;
 }
 
+export interface AgentKnowledgeConfig {
+  enabled: boolean;
+  collection_ids: string[];
+  top_k?: number;
+  min_score?: number;
+}
+
 export interface AgentConfig {
   id: string;
   role: string;
@@ -17,6 +24,7 @@ export interface AgentConfig {
   model: string;
   instructions: string;
   tools: string[];
+  knowledge?: AgentKnowledgeConfig;
 }
 
 export interface WorkflowStep {

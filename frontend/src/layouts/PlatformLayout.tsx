@@ -20,6 +20,7 @@ import {
   ServerOff,
   Lock,
   ChevronDown,
+  Database,
 } from "lucide-react";
 
 export default function PlatformLayout() {
@@ -450,6 +451,15 @@ export default function PlatformLayout() {
             >
               <Workflow className="h-4 w-4" />
               Workflows
+            </Button>
+          </Link>
+          <Link to="/platform/knowledge">
+            <Button 
+              variant={isActive("/platform/knowledge") ? "secondary" : "ghost"} 
+              className="w-full justify-start gap-2"
+            >
+              <Database className="h-4 w-4" />
+              Knowledge
             </Button>
           </Link>
           

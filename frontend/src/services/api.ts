@@ -22,6 +22,72 @@ import {
   clearStreamingState,
 } from "./streaming-state";
 
+// ========================================
+// RAG Configuration Types
+// ========================================
+
+export interface RagEmbeddingConfig {
+  model: string;
+  dimensions?: number;
+  normalize: boolean;
+}
+
+export interface RagConfig {
+  enabled: boolean;
+  provider: 'memory' | 'azure_search';
+  top_k: number;
+  min_score: number;
+  strategy: 'last_message' | 'conversation';
+  context_prompt: string;
+  namespace: string;
+  embedding?: RagEmbeddingConfig;
+}
+
+export interface KnowledgeCollection {
+  id: string;
+  name: string;
+  namespace: string;
+  description?: string | null;
+  tags: string[];
+  embedding_model?: string | null;
+  created_at: string;
+  updated_at: string;
+  document_count: number;
+  chunk_count: number;
+}
+
+export interface KnowledgeDocument {
+  id: string;
+  collection_id: string;
+  filename: string;
+  content_type?: string | null;
+  size_bytes: number;
+  checksum: string;
+  status: string;
+  chunk_count: number;
+  metadata: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface KnowledgeSearchResult {
+  document_id: string;
+  chunk_id: string;
+  content: string;
+  score: number;
+  metadata: Record<string, unknown>;
+}
+
+export interface KnowledgeIngestionEntry {
+  document: KnowledgeDocument;
+  collection: KnowledgeCollection;
+}
+
+export interface KnowledgeIngestionResponse {
+  ingested: KnowledgeIngestionEntry[];
+  count: number;
+}
+
 // Backend API response type - polymorphic entity that can be agent or workflow
 // This matches the Python Pydantic EntityInfo model which has all fields optional
 interface BackendEntityInfo {
@@ -149,10 +215,12 @@ class ApiClient {
     const url = `${this.baseUrl}${endpoint}`;
 
     // Build headers with auth token if available
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json",
-      ...(options.headers as Record<string, string>),
-    };
+    const customHeaders = (options.headers as Record<string, string>) || {};
+    const headers: Record<string, string> = { ...customHeaders };
+    const isFormData = typeof FormData !== "undefined" && options.body instanceof FormData;
+    if (!isFormData && !headers["Content-Type"]) {
+      headers["Content-Type"] = "application/json";
+    }
 
     if (this.authToken) {
       headers["Authorization"] = `Bearer ${this.authToken}`;
@@ -986,6 +1054,99 @@ class ApiClient {
   async listTools(): Promise<import("@/types/workflow").ToolInfo[]> {
     const response = await this.request<{ data: import("@/types/workflow").ToolInfo[] }>("/v1/tools");
     return response.data;
+  }
+
+  // ========================================
+  // RAG Configuration
+  // ========================================
+
+  async getRagConfig(): Promise<RagConfig> {
+    return this.request<RagConfig>("/v1/rag");
+  }
+
+  async updateRagConfig(config: RagConfig): Promise<RagConfig> {
+    return this.request<RagConfig>("/v1/rag", {
+      method: "POST",
+      body: JSON.stringify(config),
+    });
+  }
+
+  // ========================================
+  // Knowledge Base
+  // ========================================
+
+  async getKnowledgeCollections(): Promise<KnowledgeCollection[]> {
+    const response = await this.request<{ data: KnowledgeCollection[]; count: number }>(
+      "/v1/knowledge/collections"
+    );
+    return response.data || [];
+  }
+
+  async createKnowledgeCollection(payload: {
+    name: string;
+    description?: string;
+    namespace?: string;
+    tags?: string[];
+  }): Promise<KnowledgeCollection> {
+    return this.request<KnowledgeCollection>("/v1/knowledge/collections", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async deleteKnowledgeCollection(collectionId: string): Promise<void> {
+    await this.request(`/v1/knowledge/collections/${collectionId}`, {
+      method: "DELETE",
+    });
+  }
+
+  async getKnowledgeDocuments(collectionId: string): Promise<KnowledgeDocument[]> {
+    const response = await this.request<{ data: KnowledgeDocument[]; count: number }>(
+      `/v1/knowledge/collections/${collectionId}/documents`
+    );
+    return response.data || [];
+  }
+
+  async deleteKnowledgeDocument(documentId: string): Promise<void> {
+    await this.request(`/v1/knowledge/documents/${documentId}`, {
+      method: "DELETE",
+    });
+  }
+
+  async ingestKnowledgeDocuments(
+    collectionId: string,
+    files: File[],
+    metadata?: Record<string, unknown>
+  ): Promise<KnowledgeIngestionResponse> {
+    const formData = new FormData();
+    files.forEach((file) => formData.append("files", file));
+    if (metadata && Object.keys(metadata).length > 0) {
+      formData.append("metadata", JSON.stringify(metadata));
+    }
+
+    const response = await this.request<KnowledgeIngestionResponse>(
+      `/v1/knowledge/collections/${collectionId}/ingest`,
+      {
+        method: "POST",
+        body: formData,
+      }
+    );
+    return response;
+  }
+
+  async searchKnowledge(params: {
+    query: string;
+    collection_id?: string;
+    top_k?: number;
+  }): Promise<KnowledgeSearchResult[]> {
+    const response = await this.request<{ data: KnowledgeSearchResult[]; count: number }>(
+      "/v1/knowledge/search",
+      {
+        method: "POST",
+        body: JSON.stringify(params),
+      }
+    );
+    return response.data || [];
   }
 }
 

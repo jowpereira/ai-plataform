@@ -3,3 +3,4 @@
  */
 
 export { useDevUIStore } from "./devuiStore";
+export { useKnowledgeStore, DEFAULT_RAG_CONFIG } from "./useKnowledgeStore";

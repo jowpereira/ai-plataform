@@ -6,6 +6,7 @@ import DashboardPage from "@/pages/platform/dashboard/DashboardPage";
 import StudioPage from "@/pages/platform/studio/StudioPage";
 import AgentListPage from "@/pages/platform/agents/AgentListPage";
 import WorkflowListPage from "@/pages/platform/workflow/WorkflowListPage";
+import KnowledgePage from "@/pages/platform/knowledge/KnowledgePage";
 import ChatPage from "@/pages/platform/chat/ChatPage";
 import PlaygroundPage from "@/pages/platform/playground/PlaygroundPage";
 import UsersPage from "@/pages/platform/admin/UsersPage";
@@ -24,6 +25,7 @@ export default function App() {
           <Route path="dashboard" element={<DashboardPage />} />
           <Route path="agents" element={<AgentListPage />} />
           <Route path="workflows" element={<WorkflowListPage />} />
+          <Route path="knowledge" element={<KnowledgePage />} />
           <Route path="studio" element={<StudioPage />} />
           <Route path="playground" element={<PlaygroundPage />} />
           <Route path="chat" element={<ChatPage />} />

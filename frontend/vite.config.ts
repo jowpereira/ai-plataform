@@ -12,6 +12,14 @@ export default defineConfig({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  server: {
+    proxy: {
+      "/v1": {
+        target: "http://127.0.0.1:8080",
+        changeOrigin: true,
+      },
+    },
+  },
   build: {
     commonjsOptions: {
       // Enable deterministic builds, as per https://github.com/vitejs/vite/issues/13672#issuecomment-1784110536

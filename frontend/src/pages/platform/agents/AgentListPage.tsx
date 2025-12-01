@@ -43,6 +43,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { AgentFormModal } from "@/components/features/studio/AgentFormModal";
 import { useStudioStore } from "@/components/features/studio/studio-store";
+import { apiClient } from "@/services/api";
+import type { KnowledgeCollection } from "@/services/api";
 import {
   Plus,
   Search,
@@ -54,6 +56,7 @@ import {
   Filter,
   Download,
   RefreshCw,
+  Database,
 } from "lucide-react";
 import type { AgentConfig } from "@/components/features/studio/types";
 
@@ -64,6 +67,7 @@ export default function AgentListPage() {
   
   // Estado local
   const [agents, setAgents] = useState<AgentConfig[]>([]);
+  const [collections, setCollections] = useState<KnowledgeCollection[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [modelFilter, setModelFilter] = useState<string>("all");
@@ -89,9 +93,20 @@ export default function AgentListPage() {
     }
   };
 
+  // Carregar coleções de conhecimento
+  const loadCollections = async () => {
+    try {
+      const data = await apiClient.getKnowledgeCollections();
+      setCollections(data);
+    } catch (error) {
+      console.error("Erro ao carregar coleções:", error);
+    }
+  };
+
   // Carregar na montagem
   useEffect(() => {
     loadAgents();
+    loadCollections();
   }, []);
 
   // Modelos e ferramentas disponíveis
@@ -299,10 +314,11 @@ export default function AgentListPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-[250px]">Role</TableHead>
+                  <TableHead className="w-[250px]">Nome</TableHead>
                   <TableHead>ID</TableHead>
                   <TableHead>Modelo</TableHead>
                   <TableHead>Ferramentas</TableHead>
+                  <TableHead>Knowledge</TableHead>
                   <TableHead className="w-[100px] text-right">Ações</TableHead>
                 </TableRow>
               </TableHeader>
@@ -331,7 +347,7 @@ export default function AgentListPage() {
                       <Badge variant="outline">{agent.model}</Badge>
                     </TableCell>
                     <TableCell>
-                      {agent.tools.length > 0 ? (
+                      {agent.tools && agent.tools.length > 0 ? (
                         <div className="flex gap-1">
                           {agent.tools.slice(0, 2).map((t) => (
                             <Badge key={t} variant="secondary" className="text-xs">
@@ -344,6 +360,16 @@ export default function AgentListPage() {
                             </Badge>
                           )}
                         </div>
+                      ) : (
+                        <span className="text-muted-foreground text-sm">-</span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {agent.knowledge && agent.knowledge.enabled && agent.knowledge.collection_ids.length > 0 ? (
+                        <Badge variant="outline" className="gap-1">
+                          <Database className="h-3 w-3" />
+                          {agent.knowledge.collection_ids.length} coleção{agent.knowledge.collection_ids.length > 1 ? "ões" : ""}
+                        </Badge>
                       ) : (
                         <span className="text-muted-foreground text-sm">-</span>
                       )}
@@ -399,6 +425,7 @@ export default function AgentListPage() {
         agent={editingAgent || undefined}
         availableModels={availableModels}
         availableTools={availableTools}
+        availableCollections={collections}
         onSave={handleSaveAgent}
         mode={editingAgent ? "edit" : "create"}
       />
