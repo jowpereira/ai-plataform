@@ -11,10 +11,16 @@ from dotenv import load_dotenv
 
 # Configurar encoding UTF-8 para Windows
 if sys.platform == "win32":
-    import codecs
-    sys.stdout = codecs.getwriter("utf-8")(sys.stdout.detach())
-    sys.stderr = codecs.getwriter("utf-8")(sys.stderr.detach())
-    os.system("chcp 65001 > nul")
+    # Forçar UTF-8 no console do Windows
+    os.system("chcp 65001 > nul 2>&1")
+    
+    # Configurar variáveis de ambiente para UTF-8
+    os.environ["PYTHONIOENCODING"] = "utf-8"
+    
+    # Reconfigure stdout/stderr para UTF-8 se possível
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 # Adiciona a raiz do projeto ao sys.path para permitir imports de src
 PROJECT_ROOT = Path(__file__).resolve().parents[0]
@@ -64,7 +70,11 @@ async def setup_rag_for_execution():
         await service.rebuild_vector_index(force_reembed=False)
         # Registrar store para ser usado pelo RagRuntime
         register_vector_store(service.get_vector_store())
-        print(f"📚 RAG inicializado com {len(service.list_documents(collection_id=''))} documentos (total)")
+        # Contar documentos de todas as coleções
+        state = service.get_state_snapshot()
+        total_docs = len(state.documents)
+        total_chunks = sum(c.chunk_count for c in state.collections.values())
+        print(f"📚 RAG inicializado com {total_docs} documentos ({total_chunks} chunks)")
     except Exception as e:
         print(f"⚠️ Falha ao inicializar RAG: {e}")
 

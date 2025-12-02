@@ -30,6 +30,7 @@ class WorkflowEngine:
         self._event_bus = event_bus or get_event_bus()
         self._strategy_registry = get_strategy_registry()
         self.state_manager: Optional[WorkflowStateManager] = None
+        self._tool_results: Dict[str, Any] = {}  # Armazenar resultados de ferramentas para citações
 
     @property
     def event_bus(self) -> SimpleEventBus:

@@ -10,6 +10,7 @@ from agent_framework import ai_function
 from pydantic import BaseModel, Field, conint, constr
 
 from src.worker.rag import get_rag_runtime
+from src.worker.rag.citation_processor import CitationProcessor, integrate_rag_with_agent_framework
 
 logger = logging.getLogger("ferramentas.rag")
 
@@ -76,11 +77,33 @@ async def search_knowledge_base(payload: SearchKnowledgeBaseInput) -> str:
         for match in matches
     ]
 
+    # Processar citações para compatibilidade com frontend
+    processor = CitationProcessor()
+    citations = processor.extract_citations_from_search_results([
+        {
+            'id': match.document_id,
+            'filename': match.metadata.get('source', match.document_id),
+            'content': match.content,
+            'score': match.score,
+            'metadata': match.metadata,
+            'page': match.metadata.get('page'),
+            'url': match.metadata.get('url')
+        }
+        for match in matches
+    ])
+    
     return json.dumps(
         {
             "query": payload.query,
             "namespace": namespace,
             "results": formatted,
+            "citations": [{
+                'id': c.id,
+                'filename': c.filename,
+                'content': c.content,
+                'score': c.score,
+                'metadata': c.metadata
+            } for c in citations]
         },
         ensure_ascii=False,
     )

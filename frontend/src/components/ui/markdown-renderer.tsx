@@ -16,13 +16,24 @@
  * - > Blockquotes
  * - Tables (| col1 | col2 |)
  * - Horizontal rules (---)
+ * - Citation markers ([1], [doc1], [fonte: file.pdf])
  */
 
 import React, { useState, useRef, useEffect } from "react";
+import { FileText } from "lucide-react";
+import type { Annotation, FileCitationAnnotation } from "@/types/openai";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 interface MarkdownRendererProps {
   content: string;
   className?: string;
+  /** Anotações de citação para vincular marcadores no texto */
+  annotations?: Annotation[];
 }
 
 interface CodeBlockProps {
@@ -124,15 +135,142 @@ function CodeBlock({ code, language }: CodeBlockProps) {
 }
 
 /**
+ * Componente de Popup para Citações
+ */
+function CitationPopup({
+  annotation,
+  children,
+}: {
+  annotation: FileCitationAnnotation;
+  children: React.ReactNode;
+}) {
+  // Suporte para campos flat (novo) ou aninhados (legado)
+  const filename = annotation.filename || annotation.file_citation?.filename || "Documento desconhecido";
+  const quote = annotation.quote || annotation.file_citation?.quote;
+  const score = annotation.score ?? annotation.file_citation?.score;
+  const file_id = annotation.file_id || annotation.file_citation?.file_id;
+  
+  return (
+    <TooltipProvider delayDuration={200}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span className="cursor-pointer hover:bg-primary/10 rounded transition-colors">
+            {children}
+          </span>
+        </TooltipTrigger>
+        <TooltipContent className="max-w-sm p-0 overflow-hidden border shadow-md bg-popover text-popover-foreground">
+          <div className="p-3 space-y-2">
+            <div className="flex items-start gap-2">
+              <div className="p-1.5 bg-muted rounded-md shrink-0">
+                <FileText className="h-4 w-4 text-primary" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="font-medium text-sm truncate" title={filename}>
+                  {filename}
+                </div>
+                {score !== undefined && score > 0 && (
+                  <div className="text-xs text-muted-foreground">
+                    Relevância: {(score * 100).toFixed(0)}%
+                  </div>
+                )}
+              </div>
+            </div>
+            
+            {quote && (
+              <div className="relative pl-3 border-l-2 border-primary/30">
+                <p className="text-xs text-muted-foreground italic line-clamp-4">
+                  "{quote}"
+                </p>
+              </div>
+            )}
+          </div>
+          <div className="bg-muted/50 px-3 py-1.5 text-[10px] text-muted-foreground border-t flex justify-between">
+             <span>Clique para ver detalhes</span>
+             {file_id && <span>ID: {file_id.slice(0, 8)}</span>}
+          </div>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
+/**
  * Parse markdown text into React elements
  */
 export function MarkdownRenderer({
   content,
   className = "",
+  annotations = [],
 }: MarkdownRendererProps) {
   const lines = content.split("\n");
   const elements: React.ReactNode[] = [];
   let i = 0;
+
+  // DEBUG: logar sempre que há annotations
+  if (annotations.length > 0) {
+    console.log("[MarkdownRenderer] 🎯 INICIANDO com annotations:", {
+      contentPreview: content.substring(0, 100),
+      contentLength: content.length,
+      annotationsCount: annotations.length,
+      annotationsDetail: annotations.map(a => ({
+        type: a.type,
+        text: (a as FileCitationAnnotation).text,
+        filename: (a as FileCitationAnnotation).filename,
+        file_id: (a as FileCitationAnnotation).file_id,
+        quote: (a as FileCitationAnnotation).quote?.substring(0, 80),
+        score: (a as FileCitationAnnotation).score,
+      })),
+    });
+  } else {
+    // Log quando NÃO há annotations mas deveria haver (texto contém [número])
+    if (content.match(/\[\d+\]/)) {
+      console.warn("[MarkdownRenderer] ⚠️ TEXTO CONTÉM [n] MAS SEM ANNOTATIONS!", {
+        contentPreview: content.substring(0, 200),
+        matches: content.match(/\[\d+\]/g),
+      });
+    }
+  }
+
+  // Criar mapa de citações por texto para lookup rápido
+  // Usamos múltiplas chaves para garantir match
+  const citationMap = new Map<string, FileCitationAnnotation>();
+  
+  for (const annotation of annotations) {
+    if (annotation.type === "file_citation") {
+      // Chave primária: texto exato da anotação (ex: "[4]")
+      if (annotation.text) {
+        citationMap.set(annotation.text, annotation);
+        console.log(`[MarkdownRenderer] 📍 Mapeando chave primária: "${annotation.text}"`);
+        
+        // Extrair número da citação se possível e usar como chave direta
+        const numMatch = annotation.text.match(/\[(?:doc|source|fonte)?\s*(\d+)\]/i);
+        if (numMatch) {
+          const num = numMatch[1];
+          // Adicionar variações comuns
+          citationMap.set(`[${num}]`, annotation);
+          citationMap.set(`[doc${num}]`, annotation);
+          citationMap.set(`[Doc${num}]`, annotation);
+          citationMap.set(num, annotation); // Chave apenas com o número "4"
+          console.log(`[MarkdownRenderer] 📍 Mapeando variações para número ${num}`);
+        }
+      }
+      
+      // Se tem filename, adicionar como chave também
+      const filename = annotation.filename || annotation.file_citation?.filename;
+      if (filename) {
+        citationMap.set(`[fonte: ${filename}]`, annotation);
+        citationMap.set(`[source: ${filename}]`, annotation);
+      }
+    }
+  }
+  
+  // Log final do mapa de citações
+  if (citationMap.size > 0) {
+    console.log("[MarkdownRenderer] 🗺️ CitationMap final:", {
+      size: citationMap.size,
+      keys: Array.from(citationMap.keys()),
+    });
+  }
 
   while (i < lines.length) {
     const line = lines[i];
@@ -181,27 +319,27 @@ export function MarkdownRenderer({
       const header =
         level === 1 ? (
           <h1 key={elements.length} className={className}>
-            {parseInlineMarkdown(text)}
+            {parseInlineMarkdown(text, citationMap, annotations)}
           </h1>
         ) : level === 2 ? (
           <h2 key={elements.length} className={className}>
-            {parseInlineMarkdown(text)}
+            {parseInlineMarkdown(text, citationMap, annotations)}
           </h2>
         ) : level === 3 ? (
           <h3 key={elements.length} className={className}>
-            {parseInlineMarkdown(text)}
+            {parseInlineMarkdown(text, citationMap, annotations)}
           </h3>
         ) : level === 4 ? (
           <h4 key={elements.length} className={className}>
-            {parseInlineMarkdown(text)}
+            {parseInlineMarkdown(text, citationMap, annotations)}
           </h4>
         ) : level === 5 ? (
           <h5 key={elements.length} className={className}>
-            {parseInlineMarkdown(text)}
+            {parseInlineMarkdown(text, citationMap, annotations)}
           </h5>
         ) : (
           <h6 key={elements.length} className={className}>
-            {parseInlineMarkdown(text)}
+            {parseInlineMarkdown(text, citationMap, annotations)}
           </h6>
         );
 
@@ -227,7 +365,7 @@ export function MarkdownRenderer({
         >
           {listItems.map((item, idx) => (
             <li key={idx} className="text-sm break-words">
-              {parseInlineMarkdown(item)}
+              {parseInlineMarkdown(item, citationMap, annotations)}
             </li>
           ))}
         </ul>
@@ -252,7 +390,7 @@ export function MarkdownRenderer({
         >
           {listItems.map((item, idx) => (
             <li key={idx} className="text-sm break-words">
-              {parseInlineMarkdown(item)}
+              {parseInlineMarkdown(item, citationMap, annotations)}
             </li>
           ))}
         </ol>
@@ -302,7 +440,7 @@ export function MarkdownRenderer({
                         key={idx}
                         className="border-b border-foreground/10 px-3 py-2 text-left font-semibold break-words"
                       >
-                        {parseInlineMarkdown(header)}
+                        {parseInlineMarkdown(header, citationMap, annotations)}
                       </th>
                     ))}
                   </tr>
@@ -318,7 +456,7 @@ export function MarkdownRenderer({
                           key={cellIdx}
                           className="px-3 py-2 border-r border-foreground/5 last:border-r-0 break-words"
                         >
-                          {parseInlineMarkdown(cell)}
+                          {parseInlineMarkdown(cell, citationMap, annotations)}
                         </td>
                       ))}
                     </tr>
@@ -335,7 +473,7 @@ export function MarkdownRenderer({
       for (const tableLine of tableLines) {
         elements.push(
           <p key={elements.length} className="my-1">
-            {parseInlineMarkdown(tableLine)}
+            {parseInlineMarkdown(tableLine, citationMap, annotations)}
           </p>
         );
       }
@@ -358,7 +496,7 @@ export function MarkdownRenderer({
         >
           {quoteLines.map((quoteLine, idx) => (
             <div key={idx} className="break-words">
-              {parseInlineMarkdown(quoteLine)}
+              {parseInlineMarkdown(quoteLine, citationMap, annotations)}
             </div>
           ))}
         </blockquote>
@@ -385,7 +523,7 @@ export function MarkdownRenderer({
     // Regular paragraph
     elements.push(
       <p key={elements.length} className="my-1 break-words">
-        {parseInlineMarkdown(line)}
+        {parseInlineMarkdown(line, citationMap, annotations)}
       </p>
     );
     i++;
@@ -401,7 +539,10 @@ export function MarkdownRenderer({
 /**
  * Parse inline markdown patterns (bold, italic, code, links)
  */
-function parseInlineMarkdown(text: string): React.ReactNode[] {
+/**
+ * Parse inline markdown patterns (bold, italic, code, links)
+ */
+function parseInlineMarkdown(text: string, citationMap?: Map<string, FileCitationAnnotation>, annotations?: Annotation[]): React.ReactNode[] {
   const parts: React.ReactNode[] = [];
   let remaining = text;
   let key = 0;
@@ -417,7 +558,7 @@ function parseInlineMarkdown(text: string): React.ReactNode[] {
       if (codeMatch.index > 0) {
         parts.push(
           <span key={key++}>
-            {parseBoldItalicLinks(remaining.slice(0, codeMatch.index))}
+            {parseBoldItalicLinks(remaining.slice(0, codeMatch.index), citationMap, annotations)}
           </span>
         );
       }
@@ -437,7 +578,7 @@ function parseInlineMarkdown(text: string): React.ReactNode[] {
     }
 
     // No more special patterns, parse remaining text for bold/italic/links
-    parts.push(<span key={key++}>{parseBoldItalicLinks(remaining)}</span>);
+    parts.push(<span key={key++}>{parseBoldItalicLinks(remaining, citationMap, annotations)}</span>);
     break;
   }
 
@@ -445,97 +586,82 @@ function parseInlineMarkdown(text: string): React.ReactNode[] {
 }
 
 /**
- * Parse bold, italic, and links (after code has been extracted)
+ * Parse bold, italic, links, and citation markers (after code has been extracted)
  */
-function parseBoldItalicLinks(text: string): React.ReactNode[] {
+function parseBoldItalicLinks(text: string, citationMap?: Map<string, FileCitationAnnotation>, annotations?: Annotation[]): React.ReactNode[] {
   const parts: React.ReactNode[] = [];
   let remaining = text;
   let key = 0;
 
   while (remaining.length > 0) {
-    // Try to match patterns in order
-    // IMPORTANT: Handle **[link](url)** pattern first (bold markers around link)
+    // Try to match patterns in order of priority
+    // CITATION PATTERNS MUST COME FIRST to prevent [4] being eaten by link patterns
     const patterns = [
+      // 1. Citation patterns - HIGHEST PRIORITY (antes de qualquer link)
+      { regex: /【(\d+)†([^】]+)】/, component: "citation-openai" }, // 【1†source】
+      { regex: /\[(fonte|source):\s*([^\]]+)\]/i, component: "citation-file" }, // [fonte: file.pdf]
+      { regex: /\[doc(\d+)\]/i, component: "citation-num" }, // [doc1], [doc2]
+      { regex: /\[(\d+)\](?!\()/, component: "citation-num" }, // [1], [2], [4] - negative lookahead to not match [1](
+      // 2. Link patterns - after citations
       { regex: /\*\*\[([^\]]+)\]\(([^)]+)\)\*\*/, component: "strong-link" }, // **[text](url)**
       { regex: /__\[([^\]]+)\]\(([^)]+)\)__/, component: "strong-link" }, // __[text](url)__
       { regex: /\*\[([^\]]+)\]\(([^)]+)\)\*/, component: "em-link" }, // *[text](url)*
       { regex: /_\[([^\]]+)\]\(([^)]+)\)_/, component: "em-link" }, // _[text](url)_
       { regex: /\[([^\]]+)\]\(([^)]+)\)/, component: "link" }, // [text](url)
+      // 3. Text formatting - lowest priority
       { regex: /\*\*(.+?)\*\*/, component: "strong" }, // **bold**
       { regex: /__(.+?)__/, component: "strong" }, // __bold__
       { regex: /\*(.+?)\*/, component: "em" }, // *italic*
       { regex: /_(.+?)_/, component: "em" }, // _italic_
     ];
 
-    let matched = false;
+    let bestMatch: {
+      match: RegExpMatchArray;
+      pattern: typeof patterns[0];
+      index: number;
+    } | null = null;
 
+    // Find the earliest match among all patterns
     for (const pattern of patterns) {
       const match = remaining.match(pattern.regex);
 
       if (match && match.index !== undefined) {
-        // Add text before match
-        if (match.index > 0) {
-          parts.push(remaining.slice(0, match.index));
+        if (!bestMatch || match.index < bestMatch.index) {
+          bestMatch = { match, pattern, index: match.index };
         }
+      }
+    }
 
-        // Add matched element
-        if (pattern.component === "strong") {
-          parts.push(
-            <strong key={key++} className="font-semibold">
-              {match[1]}
-            </strong>
-          );
-        } else if (pattern.component === "em") {
-          parts.push(
-            <em key={key++} className="italic">
-              {match[1]}
-            </em>
-          );
-        } else if (pattern.component === "strong-link") {
-          // **[text](url)** - Bold link
-          const linkText = match[1];
-          const linkUrl = match[2];
-          const formattedLinkText = parseBoldItalicLinks(linkText);
+    if (bestMatch) {
+      const { match, pattern } = bestMatch;
 
-          parts.push(
-            <strong key={key++} className="font-semibold">
-              <a
-                href={linkUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-primary hover:underline break-words"
-              >
-                {formattedLinkText}
-              </a>
-            </strong>
-          );
-        } else if (pattern.component === "em-link") {
-          // *[text](url)* - Italic link
-          const linkText = match[1];
-          const linkUrl = match[2];
-          const formattedLinkText = parseBoldItalicLinks(linkText);
+      // Add text before match
+      if (match.index! > 0) {
+        parts.push(remaining.slice(0, match.index));
+      }
 
-          parts.push(
-            <em key={key++} className="italic">
-              <a
-                href={linkUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-primary hover:underline break-words"
-              >
-                {formattedLinkText}
-              </a>
-            </em>
-          );
-        } else if (pattern.component === "link") {
-          // [text](url) - Regular link
-          const linkText = match[1];
-          const linkUrl = match[2];
-          const formattedLinkText = parseBoldItalicLinks(linkText);
+      // Add matched element
+      if (pattern.component === "strong") {
+        parts.push(
+          <strong key={key++} className="font-semibold">
+            {match[1]}
+          </strong>
+        );
+      } else if (pattern.component === "em") {
+        parts.push(
+          <em key={key++} className="italic">
+            {match[1]}
+          </em>
+        );
+      } else if (pattern.component === "strong-link") {
+        // **[text](url)** - Bold link
+        const linkText = match[1];
+        const linkUrl = match[2];
+        const formattedLinkText = parseBoldItalicLinks(linkText, citationMap, annotations);
 
-          parts.push(
+        parts.push(
+          <strong key={key++} className="font-semibold">
             <a
-              key={key++}
               href={linkUrl}
               target="_blank"
               rel="noopener noreferrer"
@@ -543,17 +669,129 @@ function parseBoldItalicLinks(text: string): React.ReactNode[] {
             >
               {formattedLinkText}
             </a>
-          );
+          </strong>
+        );
+      } else if (pattern.component === "em-link") {
+        // *[text](url)* - Italic link
+        const linkText = match[1];
+        const linkUrl = match[2];
+        const formattedLinkText = parseBoldItalicLinks(linkText, citationMap, annotations);
+
+        parts.push(
+          <em key={key++} className="italic">
+            <a
+              href={linkUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-primary hover:underline break-words"
+            >
+              {formattedLinkText}
+            </a>
+          </em>
+        );
+      } else if (pattern.component === "link") {
+        // [text](url) - Regular link
+        const linkText = match[1];
+        const linkUrl = match[2];
+        const formattedLinkText = parseBoldItalicLinks(linkText, citationMap, annotations);
+
+        parts.push(
+          <a
+            key={key++}
+            href={linkUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-primary hover:underline break-words"
+          >
+            {formattedLinkText}
+          </a>
+        );
+        } else if (pattern.component === "citation-num" || pattern.component === "citation-file" || pattern.component === "citation-openai") {
+          // Citações
+          const fullMatch = match[0];
+          
+          // Tentar encontrar anotação de várias formas
+          let annotation = citationMap?.get(fullMatch);
+          
+          // Se não encontrou, tentar normalizar o match
+          if (!annotation && citationMap) {
+            // Para citation-num [1], [2], etc - tentar [1], [doc1], ou apenas o número
+            if (pattern.component === "citation-num") {
+              const num = match[1];
+              annotation = citationMap.get(`[${num}]`) || citationMap.get(`[doc${num}]`) || citationMap.get(num);
+            }
+          }
+
+          // Fallback final: procurar na lista de anotações se o texto contém o número
+          if (!annotation && annotations && pattern.component === "citation-num") {
+             const num = match[1];
+             annotation = annotations.find(a => 
+               a.type === "file_citation" && 
+               a.text && 
+               (a.text === fullMatch || a.text.includes(`[${num}]`))
+             ) as FileCitationAnnotation | undefined;
+          }
+
+          // Se ainda não encontrou, procurar por índice nas anotações
+          if (!annotation && annotations && annotations.length > 0) {
+            // Pegar a primeira anotação disponível como fallback
+            // (quando há apenas uma citação e ela corresponde)
+            if (annotations.length === 1) {
+              annotation = annotations[0] as FileCitationAnnotation;
+            } else if (pattern.component === "citation-num") {
+              // Tentar encontrar pelo número (índice 1-based)
+              const num = parseInt(match[1], 10);
+              if (num > 0 && num <= annotations.length) {
+                annotation = annotations[num - 1] as FileCitationAnnotation;
+              }
+            }
+          }        let content: React.ReactNode;
+        
+        if (pattern.component === "citation-num") {
+            const citationNum = match[1];
+            content = (
+              <span className="inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1 mx-0.5 text-xs font-medium rounded bg-primary/10 text-primary border border-primary/20">
+                {citationNum}
+              </span>
+            );
+        } else if (pattern.component === "citation-file") {
+            const filename = match[2].trim();
+            content = (
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 mx-0.5 text-xs font-medium rounded bg-primary/10 text-primary border border-primary/20">
+                <FileText className="w-3 h-3" />
+                {filename}
+              </span>
+            );
+        } else {
+            // OpenAI
+            const citationNum = match[1];
+            content = (
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 mx-0.5 text-xs font-medium rounded bg-primary/10 text-primary border border-primary/20">
+                {citationNum}
+              </span>
+            );
         }
 
-        remaining = remaining.slice(match.index + match[0].length);
-        matched = true;
-        break;
+        if (annotation) {
+          console.log(`[MarkdownRenderer] ✅ Citação '${fullMatch}' encontrada:`, {
+            filename: annotation.filename || annotation.file_citation?.filename,
+            quote: (annotation.quote || annotation.file_citation?.quote)?.substring(0, 30),
+          });
+          parts.push(
+            <CitationPopup key={key++} annotation={annotation}>
+              {content}
+            </CitationPopup>
+          );
+        } else {
+          console.log(`[MarkdownRenderer] ❌ Citação '${fullMatch}' NÃO encontrada. Keys disponíveis:`, Array.from(citationMap?.keys() || []));
+          // Fallback se não houver anotação (apenas renderiza o span estático)
+          parts.push(<span key={key++} title="Referência não encontrada">{content}</span>);
+        }
       }
-    }
 
-    // No pattern matched, add remaining text and exit
-    if (!matched) {
+      remaining = remaining.slice(match.index! + match[0].length);
+    } else {
+      // No pattern matched, add remaining text and exit
       if (remaining.length > 0) {
         parts.push(remaining);
       }

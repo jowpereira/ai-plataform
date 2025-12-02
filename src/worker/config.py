@@ -68,8 +68,14 @@ class RagConfig(BaseModel):
         description="Estratégia de geração da query de busca",
     )
     context_prompt: str = Field(
-        "Use os trechos a seguir como base de conhecimento. Cite as fontes disponíveis.",
-        description="Mensagem inicial que antecede os trechos recuperados",
+        (
+            "Os trechos a seguir são da base de conhecimento interna. "
+            "Use-os para responder à pergunta do usuário.\n\n"
+            "IMPORTANTE: Ao usar informações de um trecho, cite a fonte usando o número entre colchetes "
+            "(por exemplo: [1], [2]). Sempre cite as fontes relevantes no final da frase ou parágrafo "
+            "onde a informação é usada."
+        ),
+        description="Mensagem inicial que antecede os trechos recuperados, com instruções de citação",
     )
     namespace: str = Field(
         "default",

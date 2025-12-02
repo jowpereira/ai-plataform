@@ -13,6 +13,81 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict
 
+
+# ============================================================================
+# Anotações para Citações/Referências à Base de Conhecimento
+# ============================================================================
+
+
+class FileCitationAnnotation(BaseModel):
+    """Anotação de citação de arquivo da base de conhecimento.
+
+    Representa uma referência a um documento/arquivo usado pelo agente
+    para gerar a resposta. Compatível com o padrão OpenAI Responses API (v1.99+).
+    """
+
+    type: Literal["file_citation"] = "file_citation"
+    """Tipo da anotação - sempre 'file_citation' para citações de arquivo."""
+
+    file_id: str
+    """ID do arquivo citado."""
+
+    filename: str
+    """Nome do arquivo citado."""
+
+    index: int
+    """Índice da citação (geralmente start_index)."""
+
+    # Campos extras para compatibilidade com UI e metadados
+    text: str | None = None
+    """O texto no conteúdo que representa esta citação (ex: '[1]', '[doc1]')."""
+
+    start_index: int | None = None
+    """Índice inicial do marcador de citação no texto."""
+
+    end_index: int | None = None
+    """Índice final do marcador de citação no texto."""
+
+    quote: str | None = None
+    """Trecho citado do documento."""
+
+    score: float | None = None
+    """Score de relevância do trecho."""
+
+    metadata: dict[str, Any] | None = None
+    """Metadados adicionais do documento."""
+
+    model_config = ConfigDict(extra="allow")
+
+
+class UrlCitationAnnotation(BaseModel):
+    """Anotação de citação de URL/link externo.
+
+    Representa uma referência a uma URL externa usada como fonte.
+    """
+
+    type: Literal["url_citation"] = "url_citation"
+    """Tipo da anotação - sempre 'url_citation' para citações de URL."""
+
+    url: str
+    """A URL da fonte citada."""
+
+    title: str
+    """Título da página/documento."""
+
+    start_index: int
+    """Índice inicial do marcador de citação no texto."""
+
+    end_index: int
+    """Índice final do marcador de citação no texto."""
+
+    text: str | None = None
+    """O texto no conteúdo que representa esta citação."""
+
+
+# Tipo union para todas as anotações suportadas
+Annotation = FileCitationAnnotation | UrlCitationAnnotation
+
 # Custom Agent Framework OpenAI event types for structured data
 
 
@@ -396,11 +471,51 @@ class MetaResponse(BaseModel):
     """Whether the server requires Bearer token authentication."""
 
 
+class RAGSourceItem(BaseModel):
+    """Representa uma fonte RAG recuperada.
+    
+    Usado para passar fontes do ContextProvider para o mapper
+    e gerar annotations.
+    """
+    
+    index: int
+    """Número da fonte (1-based)."""
+    
+    document_id: str
+    """ID único do documento."""
+    
+    source: str
+    """Nome do arquivo ou identificador da fonte."""
+    
+    content: str
+    """Trecho/snippet do conteúdo."""
+    
+    score: float
+    """Score de relevância."""
+    
+    metadata: dict[str, Any] = {}
+    """Metadados adicionais."""
+
+
+@dataclass
+class RAGContextEvent:
+    """Evento emitido com as fontes RAG utilizadas na resposta.
+    
+    Este evento é emitido após a execução do agente para que o mapper
+    possa criar as annotations de citação apropriadas.
+    """
+    
+    sources: list[RAGSourceItem]
+    """Lista de fontes RAG recuperadas."""
+
+
 # Export all custom types
 __all__ = [
     "AgentFrameworkRequest",
     "MetaResponse",
     "OpenAIError",
+    "RAGContextEvent",
+    "RAGSourceItem",
     "ResponseFunctionResultComplete",
     "ResponseOutputData",
     "ResponseOutputFile",

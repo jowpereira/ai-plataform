@@ -77,7 +77,7 @@ const DEFAULT_RAG_CONFIG: RagConfig = {
   top_k: 4,
   min_score: 0.25,
   strategy: "last_message",
-  context_prompt: "Use os trechos a seguir como base de conhecimento. Cite as fontes disponíveis.",
+  context_prompt: "Os trechos a seguir são da base de conhecimento interna. Use-os para responder à pergunta do usuário.\n\nIMPORTANTE: Ao usar informações de um trecho, cite a fonte usando o número entre colchetes (por exemplo: [1], [2]). Sempre cite as fontes relevantes no final da frase ou parágrafo onde a informação é usada.",
   namespace: "default",
   embedding: undefined,
 };

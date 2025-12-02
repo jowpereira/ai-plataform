@@ -252,6 +252,8 @@ export function AgentView({ selectedAgent, onDebugEvent }: AgentViewProps) {
   } | null>(null);
   const userJustSentMessage = useRef<boolean>(false);
   const accumulatedTextRef = useRef<string>("");
+  // Armazenar annotations do response.completed para aplicar na atualização final
+  const pendingAnnotationsRef = useRef<import("@/types/openai").Annotation[]>([]);
 
   // Auto-scroll to bottom when new items arrive
   useEffect(() => {
@@ -342,6 +344,25 @@ export function AgentView({ selectedAgent, onDebugEvent }: AgentViewProps) {
                 total_tokens: usage.total_tokens,
               };
             }
+            
+            // IMPORTANTE: Extrair annotations do output para citações RAG
+            const output = completedEvent.response?.output;
+            if (output && output.length > 0) {
+              const firstMessage = output[0];
+              if (firstMessage.content && firstMessage.content.length > 0) {
+                const textContent = firstMessage.content.find(
+                  (c): c is import("@/types/openai").ResponseOutputText => c.type === "output_text"
+                );
+                
+                if (textContent?.annotations && textContent.annotations.length > 0) {
+                  console.log("[AgentView-Resume] 📚 Annotations recebidas:", textContent.annotations.length);
+                  
+                  // Armazenar annotations na ref para aplicar na atualização final
+                  pendingAnnotationsRef.current = textContent.annotations;
+                }
+              }
+            }
+            
             continue;
           }
 
@@ -448,18 +469,39 @@ export function AgentView({ selectedAgent, onDebugEvent }: AgentViewProps) {
 
         // Stream ended - mark as complete
         const finalUsage = currentMessageUsage.current;
+        
+        // Obter annotations pendentes (do response.completed) antes de atualizar
+        const resumeAnnotations = pendingAnnotationsRef.current;
+        const hasResumeAnnotations = resumeAnnotations.length > 0;
+        
+        if (hasResumeAnnotations) {
+          console.log("[AgentView-Resume] 🏁 Aplicando annotations na atualização final:", resumeAnnotations.length);
+        }
 
         const currentItems = useDevUIStore.getState().chatItems;
         setChatItems(currentItems.map((item) =>
           item.id === assistantMessage.id && item.type === "message"
             ? {
                 ...item,
+                // Se houver annotations, usar output_text com elas; senão manter content existente
+                content: hasResumeAnnotations 
+                  ? [
+                      {
+                        type: "output_text",
+                        text: accumulatedTextRef.current,
+                        annotations: resumeAnnotations,
+                      } as import("@/types/openai").MessageOutputTextContent,
+                    ]
+                  : item.content,
                 status: "completed" as const,
                 usage: finalUsage || undefined,
               }
             : item
         ));
         setIsStreaming(false);
+        
+        // Limpar ref de annotations para próxima mensagem
+        pendingAnnotationsRef.current = [];
 
         if (finalUsage) {
           updateConversationUsage(finalUsage.total_tokens);
@@ -1234,8 +1276,9 @@ export function AgentView({ selectedAgent, onDebugEvent }: AgentViewProps) {
           conversation_id: conversationToUse?.id,
         };
 
-        // Clear text accumulator for new response
+        // Clear text accumulator and annotations for new response
         accumulatedTextRef.current = "";
+        pendingAnnotationsRef.current = [];
 
         // Use OpenAI-compatible API streaming - direct event handling
         const streamGenerator = apiClient.streamAgentExecutionOpenAI(
@@ -1246,11 +1289,28 @@ export function AgentView({ selectedAgent, onDebugEvent }: AgentViewProps) {
         for await (const openAIEvent of streamGenerator) {
           // Pass all events to debug panel
           onDebugEvent(openAIEvent);
+          
+          // DEBUG: Log de todos os eventos recebidos (com sequence_number para rastrear ordem)
+          const seqNum = (openAIEvent as any).sequence_number ?? "N/A";
+          console.log(`[AgentView] 📨 Evento recebido: type="${openAIEvent.type}" seq=${seqNum}`);
 
           // Handle response.completed event (OpenAI standard)
           if (openAIEvent.type === "response.completed") {
+            console.log("\n\n========== 🎯 RESPONSE.COMPLETED RECEBIDO ==========");
             const completedEvent = openAIEvent as import("@/types/openai").ResponseCompletedEvent;
             const usage = completedEvent.response?.usage;
+            
+            // DEBUG: Log JSON completo do evento (truncado para não explodir o console)
+            const rawJson = JSON.stringify(openAIEvent, null, 2);
+            console.log("[AgentView] 📩 response.completed RAW (primeiros 2000 chars):", rawJson.substring(0, 2000));
+            
+            console.log("[AgentView] 📩 response.completed ESTRUTURA:", {
+              hasResponse: !!completedEvent.response,
+              hasUsage: !!usage,
+              hasOutput: !!completedEvent.response?.output,
+              outputLength: completedEvent.response?.output?.length,
+              outputTypes: completedEvent.response?.output?.map(o => o.type),
+            });
 
             if (usage) {
               currentMessageUsage.current = {
@@ -1259,6 +1319,60 @@ export function AgentView({ selectedAgent, onDebugEvent }: AgentViewProps) {
                 total_tokens: usage.total_tokens,
               };
             }
+            
+            // IMPORTANTE: Extrair annotations do output para citações RAG
+            const output = completedEvent.response?.output;
+            if (output && output.length > 0) {
+              console.log("[AgentView] 📦 Output encontrado:", output.length, "mensagens");
+              
+              // Iterar por TODOS os outputs para encontrar o correto
+              for (let i = 0; i < output.length; i++) {
+                const msg = output[i];
+                console.log(`[AgentView] 📝 Output[${i}]:`, {
+                  type: msg.type,
+                  role: msg.role,
+                  status: msg.status,
+                  contentLength: msg.content?.length,
+                  contentTypes: msg.content?.map(c => c.type),
+                });
+                
+                if (msg.content && msg.content.length > 0) {
+                  for (let j = 0; j < msg.content.length; j++) {
+                    const c = msg.content[j];
+                    console.log(`[AgentView] 🔍 Output[${i}].content[${j}]:`, {
+                      type: c.type,
+                      hasAnnotations: 'annotations' in c && Array.isArray((c as any).annotations),
+                      annotationsCount: 'annotations' in c ? (c as any).annotations?.length : 0,
+                    });
+                    
+                    if (c.type === "output_text") {
+                      const textContent = c as import("@/types/openai").ResponseOutputText;
+                      if (textContent.annotations && textContent.annotations.length > 0) {
+                        console.log(`[AgentView] 🎉 ANNOTATIONS ENCONTRADAS em output[${i}].content[${j}]:`, 
+                          textContent.annotations.length, 
+                          textContent.annotations.map(a => ({
+                            type: a.type,
+                            text: (a as any).text,
+                            filename: (a as any).filename,
+                            file_id: (a as any).file_id?.substring(0, 20),
+                          }))
+                        );
+                        
+                        // Armazenar annotations na ref para aplicar na atualização final
+                        pendingAnnotationsRef.current = textContent.annotations;
+                        console.log("[AgentView] ✅ pendingAnnotationsRef ATUALIZADO com", textContent.annotations.length, "annotations");
+                      }
+                    }
+                  }
+                }
+              }
+            } else {
+              console.log("[AgentView] ⚠️ Sem output no response.completed");
+            }
+            
+            console.log("[AgentView] 📊 Estado final de pendingAnnotationsRef:", pendingAnnotationsRef.current.length, "annotations");
+            console.log("========== FIM RESPONSE.COMPLETED ==========\n\n");
+            
             continue; // Continue processing other events
           }
 
@@ -1471,18 +1585,57 @@ export function AgentView({ selectedAgent, onDebugEvent }: AgentViewProps) {
         // Stream ended - mark as complete
         // Usage is provided via response.completed event (OpenAI standard)
         const finalUsage = currentMessageUsage.current;
+        
+        console.log("\n\n========== 🏁 STREAM ENDED - APLICANDO ATUALIZAÇÃO FINAL ==========");
+        
+        // Obter annotations pendentes (do response.completed) antes de atualizar
+        const annotations = pendingAnnotationsRef.current;
+        const hasAnnotations = annotations.length > 0;
+        
+        console.log("[AgentView] 📊 Estado no fim do stream:", {
+          pendingAnnotationsCount: annotations.length,
+          hasAnnotations,
+          accumulatedTextLength: accumulatedTextRef.current.length,
+          accumulatedTextPreview: accumulatedTextRef.current.substring(0, 100),
+        });
+        
+        if (hasAnnotations) {
+          console.log("[AgentView] 🎉 APLICANDO annotations na atualização final:", annotations.length);
+          console.log("[AgentView] 📚 Annotations a aplicar:", annotations.map(a => ({
+            type: a.type,
+            text: (a as any).text,
+            filename: (a as any).filename,
+          })));
+        } else {
+          console.warn("[AgentView] ⚠️ NENHUMA annotation para aplicar! O texto contém [n]?", 
+            accumulatedTextRef.current.match(/\[\d+\]/g)
+          );
+        }
 
         const currentItems = useDevUIStore.getState().chatItems;
         setChatItems(currentItems.map((item) =>
           item.id === assistantMessage.id && item.type === "message"
             ? {
                 ...item,
+                // Se houver annotations, usar output_text com elas; senão manter content existente
+                content: hasAnnotations 
+                  ? [
+                      {
+                        type: "output_text",
+                        text: accumulatedTextRef.current,
+                        annotations: annotations,
+                      } as import("@/types/openai").MessageOutputTextContent,
+                    ]
+                  : item.content,
                 status: "completed" as const,
                 usage: finalUsage || undefined,
               }
             : item
         ));
         setIsStreaming(false);
+        
+        // Limpar ref de annotations para próxima mensagem
+        pendingAnnotationsRef.current = [];
 
         // Update conversation-level usage stats
         if (finalUsage) {

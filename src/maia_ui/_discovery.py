@@ -1117,6 +1117,7 @@ class EntityDiscovery:
             WorkerConfig,
             WorkflowConfig,
             WorkflowStep,
+            RagConfig,  # Importado para uso no WorkerConfig
         )
         from src.worker.engine import WorkflowEngine
 
@@ -1158,6 +1159,19 @@ class EntityDiscovery:
                     agent_id,
                 )
 
+        # Carregar configuração global de RAG para injetar no WorkerConfig
+        # Isso é crucial para que o AgentFactory não desabilite o RAG runtime
+        project_root = Path(__file__).resolve().parents[2]
+        rag_config_path = project_root / ".maia" / "rag_config.json"
+        global_rag_config = None
+        
+        if rag_config_path.exists():
+            try:
+                with open(rag_config_path, "r", encoding="utf-8") as f:
+                    global_rag_config = RagConfig(**json.load(f))
+            except Exception as e:
+                logger.warning(f"Falha ao carregar configuração global de RAG: {e}")
+
         # Extrair configuração de Knowledge Base (se presente)
         knowledge_config = None
         knowledge_data = data.get("knowledge")
@@ -1168,24 +1182,14 @@ class EntityDiscovery:
                 # Tentar resolver nomes de coleções para UUIDs
                 if collection_ids:
                     try:
-                        from src.worker.config import RagConfig
                         from src.worker.rag.knowledge.service import KnowledgeBaseService
                         
-                        # Calcular caminhos (assumindo estrutura padrão do projeto)
-                        project_root = Path(__file__).resolve().parents[2]
-                        rag_config_path = project_root / ".maia" / "rag_config.json"
                         knowledge_root = project_root / ".maia" / "knowledge"
                         
-                        # Carregar config se existir
-                        rag_config = None
-                        if rag_config_path.exists():
-                            with open(rag_config_path, "r", encoding="utf-8") as f:
-                                rag_config = RagConfig(**json.load(f))
-                        
-                        if rag_config and knowledge_root.exists():
+                        if global_rag_config and knowledge_root.exists():
                             service = KnowledgeBaseService(
                                 root_dir=knowledge_root,
-                                rag_config_getter=lambda: rag_config
+                                rag_config_getter=lambda: global_rag_config
                             )
                             collections = service.list_collections()
                             name_map = {c.name: c.id for c in collections}
@@ -1219,11 +1223,28 @@ class EntityDiscovery:
                         f"collections={collection_ids}, top_k={knowledge_config.top_k}"
                     )
 
+        # Preparar dicionário de modelos
+        models_config = {model_id: ModelConfig(type=model_type, deployment=deployment_name)}
+        
+        # Se RAG estiver habilitado globalmente, garantir que o modelo de embedding esteja nos recursos
+        if global_rag_config and global_rag_config.enabled and global_rag_config.embedding:
+            embedding_model = global_rag_config.embedding.model
+            if embedding_model not in models_config:
+                # Adicionar configuração do modelo de embedding
+                # Assumimos azure-openai como padrão ou tentamos ler do ambiente
+                import os
+                deployment = os.getenv("AZURE_OPENAI_EMBEDDING_DEPLOYMENT", embedding_model)
+                models_config[embedding_model] = ModelConfig(
+                    type="azure-openai", 
+                    deployment=deployment
+                )
+                logger.info(f"➕ Adicionado modelo de embedding '{embedding_model}' aos recursos do agente")
+
         # Construir configuração completa do Worker
         worker_config = WorkerConfig(
             name=role,
             resources=ResourcesConfig(
-                models={model_id: ModelConfig(type=model_type, deployment=deployment_name)},
+                models=models_config,
                 tools=list(resolved_tools.values()),
             ),
             agents=[
@@ -1248,6 +1269,7 @@ class EntityDiscovery:
                     )
                 ],
             ),
+            rag=global_rag_config,  # Injetar configuração RAG global
         )
 
         # Usar WorkflowEngine como core de execução

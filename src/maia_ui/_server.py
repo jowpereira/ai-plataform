@@ -215,6 +215,14 @@ class DevServer:
         if self.executor is None:
             logger.info("Initializing Agent Framework executor...")
 
+            # Inicializar Knowledge Base/RAG runtime ANTES de descobrir entidades
+            # Isso garante que agentes com knowledge.enabled tenham o RAG disponível
+            try:
+                self._get_knowledge_base()
+                logger.info("🔗 RAG runtime inicializado para suportar Knowledge Base")
+            except Exception as e:
+                logger.warning(f"⚠️ Falha ao inicializar RAG runtime: {e}. Agentes com knowledge não funcionarão.")
+
             # Create components directly
             entity_discovery = EntityDiscovery(self.entities_dir)
             message_mapper = MessageMapper()

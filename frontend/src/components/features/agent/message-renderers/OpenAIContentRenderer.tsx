@@ -15,8 +15,17 @@ import {
   X,
   Clock,
 } from "lucide-react";
-import type { MessageContent } from "@/types/openai";
+import type { MessageContent, FileCitationAnnotation } from "@/types/openai";
 import { MarkdownRenderer } from "@/components/ui/markdown-renderer";
+import { CitationRenderer, type Citation } from "./CitationRenderer";
+
+interface ContentRendererProps {
+  content: MessageContent;
+  className?: string;
+  isStreaming?: boolean;
+}
+
+// Componente de citações movido para CitationRenderer.tsx
 
 interface ContentRendererProps {
   content: MessageContent;
@@ -30,11 +39,61 @@ function TextContentRenderer({ content, className, isStreaming }: ContentRendere
 
   const text = content.text;
 
+  // Obter anotações do conteúdo (se existirem)
+  const annotations = ("annotations" in content && Array.isArray(content.annotations))
+    ? content.annotations
+    : [];
+
+  // DEBUG: Log apenas quando há annotations ou é output_text
+  if (annotations.length > 0 || content.type === "output_text") {
+    console.log("[TextContentRenderer] 📝 Renderizando conteúdo:", {
+      type: content.type,
+      textLength: text.length,
+      hasAnnotations: annotations.length > 0,
+      annotationsCount: annotations.length,
+      annotationsPreview: annotations.slice(0, 2).map(a => ({
+        type: a.type,
+        text: (a as FileCitationAnnotation).text,
+        filename: (a as FileCitationAnnotation).filename,
+      })),
+    });
+  }
+
+  // Converter anotações para formato Citation se necessário
+  // IMPORTANTE: Deduplicar por file_id para evitar mostrar a mesma fonte múltiplas vezes
+  const citationMap = new Map<string, FileCitationAnnotation>();
+  annotations
+    .filter((a): a is FileCitationAnnotation => a.type === "file_citation")
+    .forEach((annotation) => {
+      // Usar file_id ou chunk_id como chave única para deduplicação
+      const fileId: string = annotation.file_id || 
+                             annotation.file_citation?.file_id || 
+                             (annotation.metadata?.chunk_id as string) || 
+                             `unknown-${annotation.start_index}`;
+      // Manter apenas a primeira ocorrência (ou atualizar se score for maior)
+      const existing = citationMap.get(fileId);
+      if (!existing || (annotation.score ?? 0) > (existing.score ?? 0)) {
+        citationMap.set(fileId, annotation);
+      }
+    });
+
+  const citations: Citation[] = Array.from(citationMap.values()).map((annotation, index) => ({
+    id: annotation.file_id || annotation.file_citation?.file_id || `citation-${index}`,
+    filename: annotation.filename || annotation.file_citation?.filename || "Documento",
+    content: annotation.quote || annotation.file_citation?.quote || "Conteúdo não disponível",
+    score: annotation.score ?? annotation.file_citation?.score,
+    metadata: annotation.metadata,
+  }));
+
   return (
     <div className={`break-words ${className || ""}`}>
-      <MarkdownRenderer content={text} />
+      <MarkdownRenderer content={text} annotations={annotations} />
       {isStreaming && text.length > 0 && (
         <span className="ml-1 inline-block h-2 w-2 animate-pulse rounded-full bg-current" />
+      )}
+      {/* Renderizar citações RAG se houver */}
+      {citations.length > 0 && !isStreaming && (
+        <CitationRenderer citations={citations} />
       )}
     </div>
   );

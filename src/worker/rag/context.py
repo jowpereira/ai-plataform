@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import time
+from dataclasses import dataclass
 from typing import Any, Literal, Mapping, Sequence
 
 from agent_framework import ChatMessage, Context, ContextProvider, Role
@@ -13,9 +14,32 @@ logger = logging.getLogger("worker.rag.context")
 
 RagStrategy = Literal["last_message", "conversation"]
 
+# Instrução de citação no final do contexto RAG (estilo Azure Search Demo)
+CITATION_INSTRUCTION = """
+---
+Lembre-se: Ao responder, cite as fontes usando [1], [2], etc. no texto da resposta.
+Exemplo: "A política permite até 30 dias de férias [1]."
+"""
+
+
+@dataclass
+class RAGMatch:
+    """Representa um match RAG para uso externo (ex: criar annotations)."""
+
+    index: int
+    document_id: str
+    source: str
+    content: str
+    score: float
+    metadata: dict[str, Any]
+
 
 class RAGContextProvider(ContextProvider):
-    """ContextProvider compatível com Agent Framework usando VectorStore em memória."""
+    """ContextProvider compatível com Agent Framework usando VectorStore em memória.
+
+    Injeta contexto de documentos relevantes antes da chamada ao LLM,
+    incluindo instruções explícitas para citar fontes.
+    """
 
     def __init__(
         self,
@@ -37,6 +61,13 @@ class RAGContextProvider(ContextProvider):
         self._context_prompt = context_prompt
         self._namespace = namespace
         self._metadata_filters = metadata_filters
+        # Armazena últimos matches para acesso externo (criar annotations)
+        self._last_matches: list[RAGMatch] = []
+
+    @property
+    def last_matches(self) -> list[RAGMatch]:
+        """Retorna os últimos matches RAG encontrados (útil para criar annotations)."""
+        return self._last_matches
 
     async def invoking(
         self,
@@ -48,10 +79,12 @@ class RAGContextProvider(ContextProvider):
             msg for msg in message_list if msg and msg.text and msg.text.strip() and msg.role in (Role.USER, Role.ASSISTANT)
         ]
         if not filtered:
+            self._last_matches = []
             return Context()
 
         query_text = self._build_query(filtered)
         if not query_text:
+            self._last_matches = []
             return Context()
 
         start = time.perf_counter()
@@ -70,6 +103,7 @@ class RAGContextProvider(ContextProvider):
 
         if not matches:
             logger.debug("Sem contexto RAG para a consulta atual")
+            self._last_matches = []
             return Context()
 
         logger.debug(
@@ -79,9 +113,33 @@ class RAGContextProvider(ContextProvider):
             search_duration,
         )
 
-        context_messages = [ChatMessage(role=Role.USER, text=self._context_prompt)]
-        context_messages.extend(ChatMessage(role=Role.USER, text=self._format_match(idx + 1, match)) for idx, match in enumerate(matches))
-        return Context(messages=context_messages)
+        # Armazenar matches para acesso externo
+        self._last_matches = [
+            RAGMatch(
+                index=idx + 1,
+                document_id=match.document_id,
+                source=match.metadata.get("source") or match.metadata.get("path") or match.document_id,
+                content=match.content.strip() or "Trecho vazio",
+                score=match.score,
+                metadata=dict(match.metadata),
+            )
+            for idx, match in enumerate(matches)
+        ]
+        
+        # Publicar matches globalmente para acesso pelo executor após workflow
+        try:
+            from src.worker.rag import publish_rag_matches
+            publish_rag_matches(self._last_matches)
+        except ImportError:
+            pass  # Ignorar se não disponível
+
+        # Montar contexto: prompt inicial + trechos numerados + instrução de citação
+        context_parts = [self._context_prompt]
+        context_parts.extend(self._format_match(m) for m in self._last_matches)
+        context_parts.append(CITATION_INSTRUCTION)
+
+        full_context = "\n\n".join(context_parts)
+        return Context(messages=[ChatMessage(role=Role.USER, text=full_context)])
 
     def _build_query(self, messages: Sequence[ChatMessage]) -> str:
         if self._strategy == "conversation":
@@ -92,11 +150,7 @@ class RAGContextProvider(ContextProvider):
         return messages[-1].text.strip() if messages and messages[-1].text else ""
 
     @staticmethod
-    def _format_match(index: int, match: VectorMatch) -> str:
-        source = match.metadata.get("source") or match.metadata.get("path") or match.document_id
-        score = f"score={match.score:.3f}"
-        header = f"[{index}] {source} ({score})"
-        chunk = match.content.strip()
-        if not chunk:
-            chunk = "Trecho vazio"
-        return f"{header}\n{chunk}"
+    def _format_match(match: RAGMatch) -> str:
+        """Formata um match RAG para inclusão no contexto."""
+        header = f"[{match.index}] {match.source} (relevância: {match.score:.0%})"
+        return f"{header}\n{match.content}"

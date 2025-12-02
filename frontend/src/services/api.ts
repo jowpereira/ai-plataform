@@ -752,6 +752,12 @@ class ApiClient {
 
                   // Check for sequence number restart (server restarted response)
                   const eventSeq = "sequence_number" in openAIEvent ? openAIEvent.sequence_number : undefined;
+                  
+                  // CRITICAL: Never skip response.completed events - they contain final annotations
+                  // The backend may send response.completed with the same sequence_number as a previous event
+                  const isCriticalEvent = openAIEvent.type === "response.completed" || 
+                                          openAIEvent.type === "response.failed";
+                  
                   if (eventSeq !== undefined) {
                     // If we've received events before and sequence restarted from 0/1
                     if (hasYieldedAnyEvent && eventSeq <= 1 && lastSequenceNumber > 1) {
@@ -774,10 +780,14 @@ class ApiClient {
                       yield openAIEvent;
                     }
                     // Skip events we've already seen (resume from last position)
-                    else if (eventSeq <= lastSequenceNumber) {
+                    // BUT always yield critical events like response.completed/response.failed
+                    else if (eventSeq <= lastSequenceNumber && !isCriticalEvent) {
                       continue; // Skip duplicate event
                     } else {
-                      lastSequenceNumber = eventSeq;
+                      // Update sequence number only if this event advances it
+                      if (eventSeq > lastSequenceNumber) {
+                        lastSequenceNumber = eventSeq;
+                      }
                       hasYieldedAnyEvent = true;
                       
                       // Save event to storage before yielding

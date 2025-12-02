@@ -1,5 +1,6 @@
 # Debug script para verificar resposta do agente
 import asyncio
+import sys
 from src.worker.config import ConfigLoader
 from src.worker.runner import AgentRunner
 from dotenv import load_dotenv
@@ -7,11 +8,14 @@ from dotenv import load_dotenv
 load_dotenv()
 
 async def test():
-    config = ConfigLoader('exemplos/agentes/agente_pesquisador.json').load_agent()
+    # Usar argumento de linha de comando ou default
+    query = sys.argv[1] if len(sys.argv) > 1 else "quais são as políticas de férias?"
+    
+    config = ConfigLoader('exemplos/agentes/agente_rh.json').load_agent()
     runner = AgentRunner(config)
     await runner.setup()
     
-    resp = await runner._agent.run('Curitiba')
+    resp = await runner._agent.run(query)
     
     print("=== Resposta ===")
     print(f"Messages: {len(resp.messages)}")
@@ -35,5 +39,15 @@ async def test():
                                 print(f"        {attr}: {val[:100] if isinstance(val, str) else val}")
                         except:
                             pass
+    
+    # Verificar se o ContextProvider tem matches
+    if hasattr(runner._agent, 'context_providers'):
+        print("\n=== RAG Context ===")
+        for provider in runner._agent.context_providers:
+            if hasattr(provider, 'last_matches'):
+                matches = provider.last_matches
+                print(f"  Matches: {len(matches)}")
+                for match in matches:
+                    print(f"    [{match.index}] {match.source}: {match.content[:80]}...")
 
 asyncio.run(test())

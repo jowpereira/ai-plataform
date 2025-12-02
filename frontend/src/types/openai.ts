@@ -49,6 +49,8 @@ export interface ResponseCompletedEvent {
     status: "completed";
     usage?: any;  // Optional usage information
     model?: string;  // Optional model information
+    /** Output contendo mensagens com annotations do RAG */
+    output?: ResponseOutputMessage[];
   };
   sequence_number?: number;
 }
@@ -357,10 +359,71 @@ export interface ResponseOutputMessage {
   status: "completed" | "failed" | "in_progress";
 }
 
+// ============================================================================
+// Anotações para Citações/Referências à Base de Conhecimento
+// ============================================================================
+
+/**
+ * Anotação de citação de arquivo da base de conhecimento.
+ * Representa uma referência a um documento usado pelo agente.
+ */
+export interface FileCitationAnnotation {
+  type: "file_citation";
+  /** O texto no conteúdo que representa esta citação (ex: '[1]', '[doc1]') */
+  text: string;
+  /** Índice inicial do marcador de citação no texto */
+  start_index: number;
+  /** Índice final do marcador de citação no texto */
+  end_index: number;
+  
+  /** ID do arquivo citado */
+  file_id: string;
+  /** Nome do arquivo citado */
+  filename: string;
+  /** Trecho citado do documento */
+  quote: string;
+  /** Score de relevância */
+  score?: number;
+  /** Metadados adicionais */
+  metadata?: Record<string, unknown>;
+  
+  /** 
+   * Campo legado para compatibilidade com versões anteriores da API OpenAI
+   * (Opcional, pois nossa implementação usa campos flat)
+   */
+  file_citation?: {
+    file_id: string;
+    quote: string;
+    filename?: string;
+    score?: number;
+    namespace?: string;
+  };
+}
+
+/**
+ * Anotação de citação de URL/link externo.
+ */
+export interface UrlCitationAnnotation {
+  type: "url_citation";
+  /** O texto no conteúdo que representa esta citação */
+  text: string;
+  /** Índice inicial do marcador de citação no texto */
+  start_index: number;
+  /** Índice final do marcador de citação no texto */
+  end_index: number;
+  /** A URL da fonte citada */
+  url: string;
+  /** Título opcional da página/documento */
+  title?: string;
+}
+
+/** Tipo union para todas as anotações suportadas */
+export type Annotation = FileCitationAnnotation | UrlCitationAnnotation;
+
 export interface ResponseOutputText {
   type: "output_text";
   text: string;
-  annotations: Record<string, unknown>[];
+  annotations: Annotation[];
 }
 
 export interface ResponseUsage {
@@ -406,7 +469,7 @@ export interface MessageInputTextContent {
 export interface MessageOutputTextContent {
   type: "output_text";
   text: string;
-  annotations?: any[];
+  annotations?: Annotation[];
   logprobs?: any[];
 }
 

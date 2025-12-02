@@ -4,6 +4,7 @@
 
 import json
 import logging
+import re
 import time
 import uuid
 from collections import OrderedDict
@@ -26,6 +27,7 @@ from .models import (
     CustomResponseOutputItemAddedEvent,
     CustomResponseOutputItemDoneEvent,
     ExecutorActionItem,
+    FileCitationAnnotation,
     InputTokensDetails,
     OpenAIResponse,
     OutputTokensDetails,
@@ -110,6 +112,254 @@ def _serialize_content_recursive(value: Any) -> Any:
     return value
 
 
+# ============================================================================
+# Extração de Citações da Base de Conhecimento
+# ============================================================================
+
+# Padrões de citação suportados no texto:
+# - [1], [2], etc. (numeradas)
+# - [doc1], [doc2], etc.
+# - [fonte: arquivo.pdf]
+# - [source: file.txt]
+# - 【1†source】 (formato OpenAI Assistants)
+CITATION_PATTERNS = [
+    # Formato numerado simples: [1], [2]
+    re.compile(r"\[(\d+)\]"),
+    # Formato com prefixo doc: [doc1], [doc2]
+    re.compile(r"\[doc(\d+)\]", re.IGNORECASE),
+    # Formato com nome de arquivo: [fonte: arquivo.pdf], [source: file.txt]
+    re.compile(r"\[(fonte|source):\s*([^\]]+)\]", re.IGNORECASE),
+    # Formato OpenAI Assistants: 【1†source】
+    re.compile(r"【(\d+)†([^】]+)】"),
+]
+
+
+def _extract_citations_from_text(
+    text: str,
+    rag_sources: list[dict[str, Any]] | None = None,
+) -> tuple[str, list[dict[str, Any]]]:
+    """Extrai anotações de citação do texto e vincula às fontes RAG.
+
+    Procura por padrões de citação no texto e cria anotações estruturadas
+    que podem ser renderizadas no frontend.
+
+    Args:
+        text: Texto com possíveis marcadores de citação
+        rag_sources: Lista de fontes RAG disponíveis no contexto
+            Cada fonte deve ter: id, source, snippet, score, metadata
+
+    Returns:
+        Tupla (texto_original, lista_de_anotações)
+        O texto não é modificado; as anotações contêm índices para os marcadores.
+    """
+    annotations: list[dict[str, Any]] = []
+
+    if not text:
+        return text, annotations
+
+    # Mapa de fontes para lookup rápido
+    source_map: dict[str, dict[str, Any]] = {}
+    if rag_sources:
+        for idx, source in enumerate(rag_sources, start=1):
+            # Indexar por número (1-based)
+            source_map[str(idx)] = source
+            # Indexar pelo ID do documento
+            if source.get("id"):
+                source_map[source["id"]] = source
+            # Indexar pelo nome do arquivo/source
+            if source.get("source"):
+                source_map[source["source"]] = source
+
+    # Verificar se há bloco de fontes explícito (gerado pelo prompt RAG)
+    # Formato esperado:
+    # ---FONTES---
+    # [1]: nome_do_arquivo
+    sources_block_match = re.search(r"---FONTES---\s*(.*)", text, re.DOTALL)
+    if sources_block_match:
+        sources_text = sources_block_match.group(1)
+        # Remover o bloco de fontes do texto principal para não exibir na UI
+        text = text[:sources_block_match.start()].strip()
+        
+        # Parsear as fontes listadas: [1]: filename
+        for line in sources_text.split('\n'):
+            line = line.strip()
+            if not line:
+                continue
+            
+            # Tentar extrair [1]: filename
+            match = re.match(r"\[(\d+)\]:\s*(.+)", line)
+            if match:
+                idx = match.group(1)
+                filename = match.group(2).strip()
+                
+                # Adicionar ao source_map se ainda não existir (priorizar rag_sources reais se houver)
+                if idx not in source_map:
+                    source_map[idx] = {
+                        "id": filename,
+                        "source": filename,
+                        "snippet": "Fonte citada pelo modelo",
+                        "score": 1.0, # Score artificial
+                        "metadata": {}
+                    }
+
+    # Buscar todos os padrões de citação
+    found_citations: list[tuple[int, int, str, dict[str, Any] | None]] = []
+
+    # Padrão 1: [1], [2], etc.
+    for match in re.finditer(r"\[(\d+)\]", text):
+        ref_num = match.group(1)
+        source = source_map.get(ref_num)
+        found_citations.append((match.start(), match.end(), match.group(), source))
+
+    # Padrão 2: [doc1], [doc2], etc.
+    for match in re.finditer(r"\[doc(\d+)\]", text, re.IGNORECASE):
+        ref_num = match.group(1)
+        source = source_map.get(ref_num)
+        found_citations.append((match.start(), match.end(), match.group(), source))
+
+    # Padrão 3: [fonte: arquivo.pdf], [source: file.txt]
+    for match in re.finditer(r"\[(fonte|source):\s*([^\]]+)\]", text, re.IGNORECASE):
+        filename = match.group(2).strip()
+        source = source_map.get(filename)
+        # Se não encontrou por nome exato, tentar busca parcial
+        if not source:
+            for key, src in source_map.items():
+                if isinstance(key, str) and filename.lower() in key.lower():
+                    source = src
+                    break
+        found_citations.append((match.start(), match.end(), match.group(), source))
+
+    # Padrão 4: 【1†source】 (formato OpenAI Assistants)
+    for match in re.finditer(r"【(\d+)†([^】]+)】", text):
+        ref_num = match.group(1)
+        source = source_map.get(ref_num)
+        found_citations.append((match.start(), match.end(), match.group(), source))
+
+    # Criar anotações para citações encontradas
+    for start_idx, end_idx, marker_text, source in found_citations:
+        if source:
+            annotation = FileCitationAnnotation(
+                type="file_citation",
+                file_id=source.get("id", "") or "unknown",
+                filename=source.get("source", source.get("id", "documento")),
+                index=start_idx,
+                # Campos extras
+                text=marker_text,
+                start_index=start_idx,
+                end_index=end_idx,
+                quote=source.get("snippet", ""),
+                score=source.get("score", 0.0),
+                metadata=source.get("metadata", {}),
+            )
+            annotations.append(annotation.model_dump())
+        else:
+            # Citação sem fonte vinculada - ainda assim criar anotação básica
+            annotation = FileCitationAnnotation(
+                type="file_citation",
+                file_id="unknown",
+                filename=marker_text.strip("[]"),
+                index=start_idx,
+                # Campos extras
+                text=marker_text,
+                start_index=start_idx,
+                end_index=end_idx,
+                quote="",
+                score=0.0,
+            )
+            annotations.append(annotation.model_dump())
+
+    return text, annotations
+
+
+def _extract_rag_sources_from_context(context: dict[str, Any]) -> list[dict[str, Any]]:
+    """Extrai fontes RAG do contexto de conversão.
+
+    Busca por resultados de ferramentas RAG (search_knowledge_base) que foram
+    executadas durante a conversa e extrai as fontes para vinculação.
+
+    Args:
+        context: Contexto de conversão do mapper
+
+    Returns:
+        Lista de fontes RAG encontradas
+    """
+    if "rag_sources" in context:
+        return context["rag_sources"]
+
+    sources: list[dict[str, Any]] = []
+    seen: set[tuple[str | None, str | None, str | None]] = set()
+
+    def _push_source(raw: dict[str, Any]) -> None:
+        if not isinstance(raw, dict):
+            return
+
+        metadata = dict(raw.get("metadata") or {})
+        normalized = {
+            "id": raw.get("id")
+            or raw.get("file_id")
+            or raw.get("filename")
+            or raw.get("source")
+            or raw.get("document_id")
+            or "unknown",
+            "source": raw.get("source")
+            or raw.get("filename")
+            or raw.get("id")
+            or raw.get("file_id")
+            or "documento",
+            "snippet": raw.get("snippet")
+            or raw.get("content")
+            or raw.get("text")
+            or raw.get("quote")
+            or "",
+            "score": raw.get("score")
+            or raw.get("@search.score")
+            or raw.get("relevance")
+            or 0.0,
+            "namespace": raw.get("namespace"),
+            "metadata": metadata,
+        }
+
+        # Preserve campos adicionais úteis
+        if raw.get("url"):
+            normalized["metadata"].setdefault("url", raw.get("url"))
+        if raw.get("page"):
+            normalized["metadata"].setdefault("page", raw.get("page"))
+
+        dedupe_key = (
+            normalized.get("id"),
+            normalized.get("source"),
+            normalized.get("snippet"),
+        )
+        if dedupe_key in seen:
+            return
+
+        seen.add(dedupe_key)
+        sources.append(normalized)
+
+    # Buscar em function_results (resultados de ferramentas)
+    function_results = context.get("function_results", [])
+    for result in function_results:
+        output = result.get("output", "")
+        try:
+            parsed = json.loads(output) if isinstance(output, str) else output
+        except (json.JSONDecodeError, TypeError):
+            continue
+
+        if not isinstance(parsed, dict):
+            continue
+
+        # Resultado típico de search_knowledge_base
+        for item in parsed.get("results", []) or []:
+            _push_source(item)
+
+        # Campo "citations" do nosso runtime traz metadados mais ricos
+        for citation in parsed.get("citations", []) or []:
+            _push_source(citation)
+
+    context["rag_sources"] = sources
+    return sources
+
+
 class MessageMapper:
     """Maps Agent Framework messages/responses to OpenAI format."""
 
@@ -172,10 +422,28 @@ class MessageMapper:
             ]
 
         # Handle Agent lifecycle events first
-        from .models._openai_custom import AgentCompletedEvent, AgentFailedEvent, AgentStartedEvent
+        from .models._openai_custom import AgentCompletedEvent, AgentFailedEvent, AgentStartedEvent, RAGContextEvent
 
         if isinstance(raw_event, (AgentStartedEvent, AgentCompletedEvent, AgentFailedEvent)):
             return await self._convert_agent_lifecycle_event(raw_event, context)
+
+        # Handle RAGContextEvent - armazenar fontes para criar annotations depois
+        if isinstance(raw_event, RAGContextEvent):
+            # Armazenar as fontes RAG no contexto para uso posterior em aggregate_to_response
+            context["rag_sources"] = [
+                {
+                    "id": src.document_id,
+                    "source": src.source,
+                    "snippet": src.content,
+                    "score": src.score,
+                    "metadata": src.metadata,
+                    "index": src.index,
+                }
+                for src in raw_event.sources
+            ]
+            logger.info(f"📚 RAGContextEvent recebido com {len(raw_event.sources)} fontes")
+            # Não emite evento para o frontend - as fontes serão usadas nas annotations
+            return []
 
         # Import Agent Framework types for proper isinstance checks
         try:
@@ -225,19 +493,79 @@ class MessageMapper:
             Final aggregated OpenAI response
         """
         try:
+            # DEBUG: Log event types recebidos
+            event_types = {}
+            for e in events:
+                et = getattr(e, "type", type(e).__name__)
+                event_types[et] = event_types.get(et, 0) + 1
+            logger.info(f"🔄 aggregate_to_response - Total de eventos: {len(events)}")
+            logger.info(f"🔄 Tipos de eventos: {event_types}")
+            
             # Extract text content from events
             content_parts = []
+
+            # Coletar resultados de funções para extração de citações RAG
+            function_results: list[dict[str, Any]] = []
 
             for event in events:
                 # Extract delta text from ResponseTextDeltaEvent
                 if hasattr(event, "delta") and hasattr(event, "type") and event.type == "response.output_text.delta":
                     content_parts.append(event.delta)
+                # Coletar resultados de funções para citações
+                # Verificar por tipo de evento (pode ser objeto ou dict)
+                event_type = getattr(event, "type", None)
+                if event_type == "response.function_result.complete":
+                    call_id = getattr(event, "call_id", "")
+                    output = getattr(event, "output", "")
+                    function_results.append({
+                        "call_id": call_id,
+                        "output": output,
+                    })
+                    logger.debug(f"📚 Capturado resultado de função RAG: call_id={call_id}, output_len={len(output)}")
 
             # Combine content
             full_content = "".join(content_parts)
+            logger.info(f"📋 Conteúdo agregado ({len(full_content)} chars): {full_content[:200]}...")
+            
+            # Verificar se há padrões de citação no texto
+            import re as re_check
+            citation_matches = list(re_check.finditer(r'\[\d+\]', full_content))
+            if citation_matches:
+                logger.info(f"🔍 Padrões de citação encontrados: {[m.group() for m in citation_matches]}")
+            else:
+                logger.warning("⚠️ Nenhum padrão de citação [N] encontrado no texto")
 
-            # Create proper OpenAI Response
-            response_output_text = ResponseOutputText(type="output_text", text=full_content, annotations=[])
+            # Obter contexto de conversão para verificar fontes RAG do ContextProvider
+            conversion_context = self._get_or_create_context(request)
+            
+            # Log do estado do contexto para debug
+            logger.info(f"🔍 Context keys: {list(conversion_context.keys())}")
+            
+            # Priorizar fontes do RAGContextEvent (ContextProvider) sobre function_results
+            rag_sources = conversion_context.get("rag_sources", [])
+            if rag_sources:
+                logger.info(f"📚 Usando {len(rag_sources)} fontes do RAGContextProvider")
+                for i, src in enumerate(rag_sources[:3]):
+                    logger.info(f"   [{i+1}] id={src.get('id')}, source={src.get('source')}, snippet={src.get('snippet', '')[:50]}...")
+            else:
+                # Fallback: extrair de resultados de funções (tool-based RAG)
+                rag_sources = _extract_rag_sources_from_context({"function_results": function_results})
+            
+            if rag_sources:
+                logger.info(f"📖 Fontes RAG disponíveis: {len(rag_sources)} documentos")
+                for src in rag_sources[:3]:  # Log primeiras 3
+                    logger.debug(f"   - {src.get('source', 'N/A')} (score: {src.get('score', 0):.2f})")
+
+            # Extrair citações do texto
+            cleaned_text, annotations = _extract_citations_from_text(full_content, rag_sources)
+            if annotations:
+                logger.info(f"📝 Citações extraídas: {len(annotations)} anotações")
+                for ann in annotations[:3]:
+                    logger.info(f"   - Anotação: text={ann.get('text')}, filename={ann.get('filename')}")
+
+            # Create proper OpenAI Response com anotações
+            response_output_text = ResponseOutputText(type="output_text", text=cleaned_text, annotations=annotations)
+            logger.info(f"📤 ResponseOutputText criado com {len(annotations)} annotations")
 
             response_output_message = ResponseOutputMessage(
                 type="message",
@@ -839,8 +1167,12 @@ class MessageMapper:
                             # Fallback to string representation if not JSON serializable
                             text = str(output_data)
 
-                    # Create output message with text content
-                    text_content = ResponseOutputText(type="output_text", text=text, annotations=[])
+                    # Extrair fontes RAG do contexto e citações do texto
+                    rag_sources = _extract_rag_sources_from_context(context)
+                    sanitized_text, annotations = _extract_citations_from_text(text, rag_sources)
+
+                    # Create output message with text content e anotações
+                    text_content = ResponseOutputText(type="output_text", text=sanitized_text, annotations=annotations)
 
                     output_message = ResponseOutputMessage(
                         type="message",
@@ -853,7 +1185,7 @@ class MessageMapper:
                     # Emit output_item.added for each yield_output
                     logger.debug(
                         f"WorkflowOutputEvent converted to output_item.added "
-                        f"(executor: {source_executor_id}, length: {len(text)})"
+                        f"(executor: {source_executor_id}, length: {len(sanitized_text)})"
                     )
                     return [
                         ResponseOutputItemAddedEvent(
@@ -1508,6 +1840,9 @@ class MessageMapper:
         if not call_id:
             call_id = f"call_{uuid.uuid4().hex[:8]}"
 
+        # Extract function name for logging
+        function_name = getattr(content, "name", None) or getattr(content, "function_name", "unknown")
+
         # Extract result
         result = getattr(content, "result", None)
         exception = getattr(content, "exception", None)
@@ -1522,6 +1857,26 @@ class MessageMapper:
             output = serialized if isinstance(serialized, str) else json.dumps(serialized)
         else:
             output = ""
+
+        # Log para debug de resultados RAG
+        logger.debug(f"🔧 FunctionResultContent: call_id={call_id}, output_len={len(output)}")
+
+        # Verificar se é resultado de search_knowledge_base
+        try:
+            parsed = json.loads(output) if output else {}
+            if isinstance(parsed, dict) and "results" in parsed:
+                results_count = len(parsed.get("results", []))
+                logger.info(f"📚 Resultado RAG detectado: {results_count} documentos encontrados")
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+        # Armazenar resultado de função no contexto para extração de citações RAG
+        if "function_results" not in context:
+            context["function_results"] = []
+        context["function_results"].append({
+            "call_id": call_id,
+            "output": output,
+        })
 
         # Determine status based on exception
         status = "incomplete" if exception else "completed"

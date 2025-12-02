@@ -2,6 +2,70 @@
 
 Todos os marcos notáveis deste projeto serão documentados neste arquivo.
 
+## [0.18.4] - 2025-12-02
+
+### Correção Crítica: Citações RAG Popup
+
+> **Bug Fix:** Citações `[1]`, `[4]` agora são clicáveis e exibem popup com informações do documento fonte.
+
+#### Corrigido
+- **Frontend - Streaming SSE (`frontend/src/services/api.ts`)**
+  - Evento `response.completed` estava sendo descartado por ter `sequence_number` duplicado
+  - Backend envia `response.trace.completed` e `response.completed` com mesmo seq (146)
+  - Adicionada exceção para eventos críticos (`response.completed`, `response.failed`) que nunca são pulados
+  - Annotations corretas com `filename: "politicas_rh.txt"`, `quote` e `score` agora chegam ao handler
+
+- **Frontend - Deduplicação de Citações (`OpenAIContentRenderer.tsx`)**
+  - Citações duplicadas (mesmo `file_id`) eram exibidas múltiplas vezes na lista "Fontes consultadas"
+  - Backend envia uma annotation por ocorrência de `[1]` no texto (mesmo documento)
+  - Implementada deduplicação via `Map<file_id, annotation>` antes de renderizar
+  - Mantém annotation com maior score de relevância em caso de duplicatas
+
+#### Técnico
+- **Análise Forense**: Arquivo HAR confirmou que backend enviava dados corretos
+- **Causa Raiz 1**: Lógica de deduplicação `eventSeq <= lastSequenceNumber` descartava evento crítico
+- **Causa Raiz 2**: Múltiplas annotations com mesmo `chunk_id` geravam cards duplicados
+- **Debug Logs**: Adicionados logs `📨 Evento recebido` e `🎯 RESPONSE.COMPLETED` para rastreamento
+
+---
+
+## [0.18.3] - 2025-12-01
+
+### Implementação de Referências à Base de Conhecimento (Citações)
+
+> **Recurso:** Suporte ponta-a-ponta para citações de arquivos da base de conhecimento nas conversas com agentes.
+
+#### Adicionado
+- **Backend - Modelos de Anotação (`src/maia_ui/models/_openai_custom.py`)**
+  - `FileCitationAnnotation`: Modelo para citações de arquivos RAG com file_id, filename, quote e score
+  - `UrlCitationAnnotation`: Modelo para citações de URLs externas
+  - Tipo union `Annotation` exportado para uso geral
+
+- **Backend - Extração de Citações (`src/maia_ui/_mapper.py`)**
+  - Função `_extract_citations_from_text()`: Detecta padrões de citação no texto (`[1]`, `[doc1]`, `[fonte: arquivo.pdf]`, `【1†source】`)
+  - Função `_extract_rag_sources_from_context()`: Extrai fontes RAG de resultados de `search_knowledge_base`
+  - Integração no mapeamento de eventos: `aggregate_to_response`, `WorkflowOutputEvent`, `_map_function_result_content`
+
+- **Frontend - Tipagem (`frontend/src/types/openai.ts`)**
+  - Interfaces `FileCitationAnnotation` e `UrlCitationAnnotation`
+  - Tipo `Annotation` e atualização de `MessageOutputTextContent` para usar `Annotation[]`
+
+- **Frontend - Componente de Citações (`OpenAIContentRenderer.tsx`)**
+  - `CitationsList`: Lista colapsável de referências exibida abaixo do texto
+  - `CitationCard`: Card individual com filename, score de relevância e trecho citado
+  - Integração automática no `TextContentRenderer` quando há anotações
+
+- **Frontend - Marcadores de Citação (`markdown-renderer.tsx`)**
+  - Detecção e estilização de padrões de citação inline: `[1]`, `[doc1]`, `[fonte: file.pdf]`, `【1†source】`
+  - Badges visuais com tooltip indicando referência
+
+#### Técnico
+- **Compatibilidade OpenAI**: Segue especificação de `annotations` do Assistants API
+- **Performance**: Extração de citações é lazy e não impacta streaming
+- **Padrões suportados**: Numerados, com prefixo doc, com nome de arquivo, formato OpenAI Assistants
+
+---
+
 ## [0.18.2] - 2025-12-01
 
 ### Correções de Bugs e Validação Completa
