@@ -2,6 +2,58 @@
 
 Todos os marcos notáveis deste projeto serão documentados neste arquivo.
 
+## [0.19.2] - 2025-12-03
+
+### Integração Azure Application Insights
+
+> **Feature:** Tracing completo enviado ao Azure Application Insights para visualização no portal Foundry.
+
+#### Adicionado
+- **Dependência `azure-monitor-opentelemetry-exporter>=1.0.0b41`**
+  - Exportador oficial da Microsoft para enviar traces ao Application Insights
+  - Instalado automaticamente via `uv add`
+
+- **Variável `APPLICATIONINSIGHTS_CONNECTION_STRING` no `.env`**
+  - Connection string do Application Insights `app_insights_east_genia` (resource group `rg_poc_pinhal`)
+  - Permite envio direto de traces sem necessidade de OAuth/DefaultAzureCredential
+
+#### Alterado
+- **`src/worker/observability.py`**
+  - Simplificado para usar connection string direta ao invés de fluxo OAuth complexo
+  - Removida função `_configure_foundry_tracing` (dependia de `AIProjectClient` com OAuth)
+  - Logs informativos indicam destino configurado (Application Insights, OTLP ou VS Code)
+
+#### Validado
+- **Teste de tracing isolado**: Response 200, 4 items accepted pelo Application Insights ✅
+- **Workflow sequential**: Execução completa com traces enviados automaticamente ✅
+- **Arquivo de teste removido**: `test_foundry_tracing.py` deletado após validação
+
+#### Técnico
+- **Descoberta**: Azure AI Foundry SDK (`AIProjectClient`) requer OAuth via `DefaultAzureCredential`, não aceita API keys
+- **Solução**: Usar `APPLICATIONINSIGHTS_CONNECTION_STRING` diretamente, bypassing OAuth
+- **Visualização**: Traces disponíveis em Azure Portal → Application Insights → Transaction search
+
+---
+
+## [0.19.1] - 2025-12-03
+
+### Observabilidade 100% Framework
+
+> **Fix:** Worker volta a depender exclusivamente da instrumentação oficial do Agent Framework.
+
+#### Alterado
+- **`src/worker/observability.py`**
+  - Passa a ler `ENABLE_OTEL`, `ENABLE_SENSITIVE_DATA`, `OTLP_ENDPOINT`, `APPLICATIONINSIGHTS_CONNECTION_STRING` e `VS_CODE_EXTENSION_PORT` antes de configurar a telemetria.
+  - Usa apenas `agent_framework.observability.setup_observability`, eliminando o adapter customizado e evitando spans duplicados.
+  - Mantém rotina de shutdown para garantir flush dos exporters quando o processo encerra.
+- **`WorkflowEngine` e `AgentRunner`**
+  - Chamadas simplificadas para o novo `setup_observability()` idempotente, mantendo o worker genérico.
+
+#### Impacto
+- O worker fica totalmente alinhado às configurações documentadas do Framework, inclusive para cenários em que a observabilidade deve permanecer desligada por padrão.
+
+---
+
 ## [0.19.0] - 2025-12-03
 
 ### Observabilidade Granular e Estabilidade de Runtime

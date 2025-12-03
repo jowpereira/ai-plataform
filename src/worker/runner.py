@@ -31,7 +31,7 @@ from src.worker.config import (
 )
 from src.worker.factory import AgentFactory
 from src.worker.events import get_event_bus, WorkerEventType
-from src.worker.observability import setup_observability, shutdown_observability
+from src.worker.observability import setup_observability
 
 logger = logging.getLogger("worker.runner")
 
@@ -74,7 +74,7 @@ class AgentRunner:
         self._setup_complete = False
         self.execution_id = str(uuid.uuid4())
         
-        # Initialize observability
+        # Initialize observability (idempotente)
         setup_observability()
         
     def _build_worker_config(self) -> WorkerConfig:

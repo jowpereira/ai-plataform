@@ -13,7 +13,7 @@ from src.worker.agents import HumanAgent
 from src.worker.strategies import StrategyRegistry, get_strategy_registry
 from src.worker.events import SimpleEventBus, get_event_bus, WorkerEventType
 from src.worker.state import WorkflowStateManager
-from src.worker.observability import setup_observability, shutdown_observability
+from src.worker.observability import setup_observability
 
 
 class WorkflowEngine:
@@ -33,8 +33,8 @@ class WorkflowEngine:
         self.state_manager: Optional[WorkflowStateManager] = None
         self._tool_results: Dict[str, Any] = {}  # Armazenar resultados de ferramentas para citações
 
-        # Initialize observability
-        setup_observability(event_bus=self._event_bus)
+        # Initialize observability (idempotente)
+        setup_observability()
 
     @property
     def event_bus(self) -> SimpleEventBus:
