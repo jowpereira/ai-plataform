@@ -13,6 +13,7 @@ from src.worker.agents import HumanAgent
 from src.worker.strategies import StrategyRegistry, get_strategy_registry
 from src.worker.events import SimpleEventBus, get_event_bus, WorkerEventType
 from src.worker.state import WorkflowStateManager
+from src.worker.observability import setup_observability, shutdown_observability
 
 
 class WorkflowEngine:
@@ -32,6 +33,9 @@ class WorkflowEngine:
         self.state_manager: Optional[WorkflowStateManager] = None
         self._tool_results: Dict[str, Any] = {}  # Armazenar resultados de ferramentas para citações
 
+        # Initialize observability
+        setup_observability(event_bus=self._event_bus)
+
     @property
     def event_bus(self) -> SimpleEventBus:
         """Retorna o EventBus para inscrição de hooks externos."""
@@ -40,7 +44,11 @@ class WorkflowEngine:
     def _emit(self, event_type: WorkerEventType, data: Optional[Dict[str, Any]] = None) -> None:
         """Emite evento se o bus estiver configurado."""
         if self._event_bus:
-            self._event_bus.emit_simple(event_type, data or {})
+            metadata = {}
+            if self.state_manager:
+                metadata["execution_id"] = self.state_manager.state.execution_id
+            
+            self._event_bus.emit_simple(event_type, data or {}, metadata=metadata)
 
     def setup(self) -> None:
         """Inicializa recursos, estado e constrói o workflow."""

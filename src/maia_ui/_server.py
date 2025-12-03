@@ -825,12 +825,12 @@ class DevServer:
 
                 # Route to local Agent Framework executor (original behavior)
                 raw_body = await raw_request.body()
-                logger.info(f"Raw request body: {raw_body.decode()}")
-                logger.info(f"Parsed request: metadata={request.metadata}")
+                logger.debug(f"Raw request body: {raw_body.decode()}")
+                logger.debug(f"Parsed request: metadata={request.metadata}")
 
                 # Get entity_id from metadata
                 entity_id = request.get_entity_id()
-                logger.info(f"Extracted entity_id: {entity_id}")
+                logger.debug(f"Extracted entity_id: {entity_id}")
 
                 if not entity_id:
                     error = OpenAIError.create("Missing entity_id in metadata. Provide metadata.entity_id in request.")
@@ -840,7 +840,7 @@ class DevServer:
                 executor = await self._ensure_executor()
                 try:
                     entity_info = executor.get_entity_info(entity_id)
-                    logger.info(f"Found entity: {entity_info.name} ({entity_info.type})")
+                    logger.debug(f"Found entity: {entity_info.name} ({entity_info.type})")
                 except Exception:
                     error = OpenAIError.create(f"Entity not found: {entity_id}")
                     return JSONResponse(status_code=404, content=error.to_dict())

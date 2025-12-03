@@ -2,6 +2,66 @@
 
 Todos os marcos notáveis deste projeto serão documentados neste arquivo.
 
+## [0.19.0] - 2025-12-03
+
+### Observabilidade Granular e Estabilidade de Runtime
+
+> **Feature & Fix:** Refinamento completo da camada de telemetria para compliance e correção de travamentos em processos CLI/Server.
+
+#### Adicionado
+- **Telemetria Granular (`src/worker/observability.py`)**:
+  - Novos spans `LLM_REQUEST`: Separa latência de rede/inferência do tempo de processamento do agente.
+  - Novos spans `PROMPT_RENDER`: Mede tempo de montagem de templates Jinja2.
+  - Atributos de Compliance: `llm.model`, `llm.provider`, `llm.usage.prompt_tokens`, `llm.usage.completion_tokens`.
+  - Visibilidade hierárquica: Workflow → Agente → Renderização → LLM → Ferramentas.
+
+#### Corrigido
+- **Processos Zumbi (CLI)**:
+  - Implementado `shutdown_observability` registrado via `atexit`.
+  - Garante encerramento limpo de threads de métricas (OpenTelemetry) que impediam o fim do processo Python.
+  
+- **Estabilidade do Servidor UI (MAIA)**:
+  - Removido shutdown explícito de telemetria no `teardown` do `WorkflowEngine`.
+  - Evita que a finalização de um workflow derrube o provedor global de traces do servidor persistente.
+
+- **Erro em Telemetria de Ferramentas**:
+  - Corrigido `TypeError: _end_tool_span() got an unexpected keyword argument 'status'`.
+  - Assinatura do método atualizada para aceitar status de erro/sucesso.
+
+#### Técnico
+- **Compliance**: Auditoria de custos (tokens) agora vinculada a requisições individuais, facilitando rateio.
+- **Performance**: Identificação precisa de gargalos (Rede vs Processamento Local).
+
+---
+
+## [0.18.5] - 2025-12-03
+
+### Correções de Runtime e Validação CLI
+
+> **Bug Fix:** Correções críticas no Worker para execução de agentes e workflows via CLI.
+
+#### Corrigido
+- **WorkflowEngine (`src/worker/engine.py`)**
+  - `AttributeError: 'WorkflowStateManager' object has no attribute 'execution_id'`
+  - Método `_emit` corrigido para acessar `self.state_manager.state.execution_id` (via modelo Pydantic interno)
+  - Workflows sequenciais agora completam corretamente todos os supersteps
+
+- **AgentRunner (`src/worker/runner.py`)**
+  - `SyntaxError` corrigido: parêntese extra remanescente de edição anterior removido
+  - Agentes standalone agora executam sem erros de sintaxe
+
+#### Validado
+- **Teste de Agente (`agente_pesquisador.json`)**: Execução completa com ferramenta `consultar_clima` ✅
+- **Teste de Workflow (`sequential.json`)**: Pipeline de 5 supersteps com resposta final do agente "redator" ✅
+- **Observabilidade**: Traces OpenTelemetry capturados corretamente (`gen_ai.choice`, `gen_ai.tool.message`)
+
+#### Técnico
+- Confirmado que `WorkflowStateManager` encapsula `WorkflowState` (Pydantic) no atributo `.state`
+- Propriedades como `execution_id`, `status`, `context` devem ser acessadas via `.state.`
+- CLI `run.py run --config ... --input ... --debug` funcionando para agentes e workflows
+
+---
+
 ## [0.18.4] - 2025-12-02
 
 ### Correção Crítica: Citações RAG Popup

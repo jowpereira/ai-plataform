@@ -45,7 +45,7 @@ class AgentFrameworkExecutor:
         """
         self.entity_discovery = entity_discovery
         self.message_mapper = message_mapper
-        self._setup_tracing_provider()
+        # _setup_tracing_provider removed in favor of agent_framework's setup_observability
         self._setup_agent_framework_tracing()
 
         # Use provided conversation store or default to in-memory
@@ -55,30 +55,6 @@ class AgentFrameworkExecutor:
         from ._conversations import CheckpointConversationManager
 
         self.checkpoint_manager = CheckpointConversationManager(self.conversation_store)
-
-    def _setup_tracing_provider(self) -> None:
-        """Set up our own TracerProvider so we can add processors."""
-        try:
-            from opentelemetry import trace
-            from opentelemetry.sdk.resources import Resource
-            from opentelemetry.sdk.trace import TracerProvider
-
-            # Only set up if no provider exists yet
-            if not hasattr(trace, "_TRACER_PROVIDER") or trace._TRACER_PROVIDER is None:
-                resource = Resource.create({
-                    "service.name": "agent-framework-server",
-                    "service.version": "1.0.0",
-                })
-                provider = TracerProvider(resource=resource)
-                trace.set_tracer_provider(provider)
-                logger.info("Set up TracerProvider for server tracing")
-            else:
-                logger.debug("TracerProvider already exists")
-
-        except ImportError:
-            logger.debug("OpenTelemetry not available")
-        except Exception as e:
-            logger.warning(f"Failed to setup TracerProvider: {e}")
 
     def _setup_agent_framework_tracing(self) -> None:
         """Set up Agent Framework's built-in tracing."""
@@ -90,7 +66,7 @@ class AgentFrameworkExecutor:
                 # Only configure if not already executed
                 if not OBSERVABILITY_SETTINGS._executed_setup:
                     # Get OTLP endpoint from either custom or standard env var
-                    # This handles the case where env vars are set after ObservabilitySettings was imported
+                    # This handles the case where env vars were set after ObservabilitySettings was imported
                     otlp_endpoint = os.environ.get("OTLP_ENDPOINT") or os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT")
 
                     # Pass the endpoint explicitly to setup_observability

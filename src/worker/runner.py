@@ -12,6 +12,7 @@ consistência com o padrão existente do projeto.
 
 import logging
 import os
+import uuid
 from typing import Any, AsyncGenerator, Optional
 
 from agent_framework import ChatAgent
@@ -30,6 +31,7 @@ from src.worker.config import (
 )
 from src.worker.factory import AgentFactory
 from src.worker.events import get_event_bus, WorkerEventType
+from src.worker.observability import setup_observability, shutdown_observability
 
 logger = logging.getLogger("worker.runner")
 
@@ -70,6 +72,10 @@ class AgentRunner:
         self._agent: Optional[ChatAgent] = None
         self._agent_factory: Optional[AgentFactory] = None
         self._setup_complete = False
+        self.execution_id = str(uuid.uuid4())
+        
+        # Initialize observability
+        setup_observability()
         
     def _build_worker_config(self) -> WorkerConfig:
         """
@@ -205,7 +211,6 @@ class AgentRunner:
             raise RuntimeError("Agente não inicializado")
         
         bus = get_event_bus()
-        
         # Emitir evento de início de execução (header visual)
         bus.emit_simple(
             WorkerEventType.AGENT_RUN_START,
@@ -214,7 +219,8 @@ class AgentRunner:
                 "agent_role": self.config.role,
                 "tools_count": len(self.config.tools),
                 "input": input_text
-            }
+            },
+            metadata={"execution_id": self.execution_id}
         )
         
         logger.info(f"🚀 Executando agente: {self.config.id}")
@@ -226,11 +232,11 @@ class AgentRunner:
             # Extrair texto da resposta (AgentRunResponse)
             result_text = self._extract_response_text(response)
             
-            # Emitir evento de conclusão (footer visual)
             # Nota: EventMiddleware já emite AGENT_RESPONSE durante execução
             bus.emit_simple(
                 WorkerEventType.AGENT_RUN_COMPLETE,
-                {"agent_name": self.config.id, "result": result_text}
+                {"agent_name": self.config.id, "result": result_text},
+                metadata={"execution_id": self.execution_id}
             )
             
             logger.info(f"✅ Agente concluído: {self.config.id}")
@@ -239,7 +245,8 @@ class AgentRunner:
         except Exception as e:
             bus.emit_simple(
                 WorkerEventType.WORKFLOW_ERROR,
-                {"agent_name": self.config.id, "error": str(e)}
+                {"agent_name": self.config.id, "error": str(e)},
+                metadata={"execution_id": self.execution_id}
             )
             logger.error(f"❌ Erro no agente {self.config.id}: {e}")
             raise
@@ -281,9 +288,6 @@ class AgentRunner:
         
         if not self._agent:
             raise RuntimeError("Agente não inicializado")
-        
-        bus = get_event_bus()
-        
         # Emitir evento de início
         bus.emit_simple(
             WorkerEventType.AGENT_RUN_START,
@@ -292,7 +296,8 @@ class AgentRunner:
                 "agent_role": self.config.role,
                 "tools_count": len(self.config.tools),
                 "input": input_text
-            }
+            },
+            metadata={"execution_id": self.execution_id}
         )
         
         logger.info(f"🚀 Executando agente (stream): {self.config.id}")
@@ -305,14 +310,11 @@ class AgentRunner:
                 # Fallback para run() se streaming não disponível
                 result = await self._agent.run(input_text)
                 yield result
-                
-            # Nota: Para streaming, o AGENT_RUN_COMPLETE seria emitido 
-            # pelo caller após processar todos os eventos
-            
         except Exception as e:
             bus.emit_simple(
                 WorkerEventType.WORKFLOW_ERROR,
-                {"agent_name": self.config.id, "error": str(e)}
+                {"agent_name": self.config.id, "error": str(e)},
+                metadata={"execution_id": self.execution_id}
             )
             raise
 
