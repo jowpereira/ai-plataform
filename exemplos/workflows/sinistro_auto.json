@@ -1,0 +1,98 @@
+{
+  "version": "1.0",
+  "name": "Pipeline de Sinistro Auto Mapfre",
+  "description": "Processamento completo de sinistro de veículo: extração, análise técnica, avaliação de risco e parecer final.",
+  "resources": {
+    "models": {
+      "gpt-4o-mini": {
+        "type": "azure-openai",
+        "deployment": "gpt-4o-mini"
+      }
+    },
+    "tools": [
+      {
+        "id": "consultar_tabela_fipe",
+        "path": "mock_tools.seguros:consultar_tabela_fipe",
+        "description": "Consulta valor FIPE de veículos"
+      },
+      {
+        "id": "consultar_apolice",
+        "path": "mock_tools.seguros:consultar_apolice",
+        "description": "Consulta detalhes de apólice de seguro"
+      },
+      {
+        "id": "calcular_score_risco",
+        "path": "mock_tools.seguros:calcular_score_risco",
+        "description": "Calcula score de risco para análise de sinistro"
+      },
+      {
+        "id": "gerar_protocolo",
+        "path": "mock_tools.seguros:gerar_protocolo",
+        "description": "Gera protocolo de atendimento"
+      }
+    ]
+  },
+  "agents": [
+    {
+      "id": "extrator",
+      "role": "Extrator de Dados",
+      "description": "Extrai informações estruturadas do relato de sinistro.",
+      "model": "gpt-4o-mini",
+      "instructions": "Você é o Extrator de Dados de Sinistros Auto da Mapfre.\n\nExtraia as seguintes informações do relato e retorne em JSON:\n\n```json\n{\n  \"numero_apolice\": \"string ou null\",\n  \"data_sinistro\": \"YYYY-MM-DD\",\n  \"hora_sinistro\": \"HH:MM\",\n  \"local\": {\n    \"endereco\": \"string\",\n    \"cidade\": \"string\",\n    \"uf\": \"string\"\n  },\n  \"veiculo\": {\n    \"marca\": \"string\",\n    \"modelo\": \"string\",\n    \"ano\": \"number\",\n    \"placa\": \"string\"\n  },\n  \"tipo_sinistro\": \"colisao|roubo|furto|incendio|alagamento|outros\",\n  \"descricao\": \"resumo em 2 linhas\",\n  \"terceiros_envolvidos\": true/false,\n  \"vitimas\": true/false,\n  \"boletim_ocorrencia\": \"número ou null\",\n  \"valor_estimado\": \"number ou null\"\n}\n```\n\nSe não conseguir extrair algum campo, coloque null.\nNÃO invente dados.",
+      "tools": []
+    },
+    {
+      "id": "especialista_auto",
+      "role": "Especialista Auto",
+      "description": "Analisa tecnicamente o sinistro de veículo.",
+      "model": "gpt-4o-mini",
+      "instructions": "Você é o Especialista em Sinistros Auto da Mapfre.\n\nCom base nos dados extraídos, analise:\n\n1. **Cobertura Aplicável**\n   - Tipo de cobertura contratada\n   - Franquia aplicável\n   - Exclusões relevantes\n\n2. **Análise Técnica**\n   - Dinâmica do acidente\n   - Responsabilidade (segurado/terceiro)\n   - Documentação necessária\n\n3. **Estimativa de Valor**\n   - Use `consultar_tabela_fipe` para obter valor FIPE\n   - Perda total vs. parcial (perda total se dano > 75% FIPE)\n   - Dedução de franquia\n\nFormate sua análise de forma clara e técnica.",
+      "tools": ["consultar_tabela_fipe", "consultar_apolice"]
+    },
+    {
+      "id": "avaliador_risco",
+      "role": "Avaliador de Risco",
+      "description": "Calcula score de risco e detecta fraudes.",
+      "model": "gpt-4o-mini",
+      "instructions": "Você é o Avaliador de Risco da Mapfre.\n\nUse a ferramenta `calcular_score_risco` para calcular o Score de Risco considerando os fatores do sinistro.\n\n**Classificação:**\n- 0-25: BAIXO RISCO - Aprovação automática\n- 26-50: RISCO MODERADO - Verificação padrão\n- 51-75: RISCO ELEVADO - Análise aprofundada\n- 76-100: RISCO CRÍTICO - Investigação SIU\n\nFormate o resultado com pontuação detalhada.",
+      "tools": ["calcular_score_risco"]
+    },
+    {
+      "id": "resumidor",
+      "role": "Gerador de Parecer",
+      "description": "Cria parecer executivo final do sinistro.",
+      "model": "gpt-4o-mini",
+      "instructions": "Você cria Pareceres Executivos de Sinistros Auto da Mapfre.\n\nCom base nas análises anteriores, formate o parecer final:\n\n```\n══════════════════════════════════════════════════════════\n                 PARECER DE SINISTRO AUTO\n                      MAPFRE SEGUROS\n══════════════════════════════════════════════════════════\n\n📋 IDENTIFICAÇÃO\n   Protocolo: SIN-AUTO-[YYYYMMDD]-[XXXX]\n   Data/Hora: [data e hora do sinistro]\n   Local: [endereço completo]\n\n🚗 VEÍCULO\n   [Marca/Modelo/Ano] - Placa [XXXX]\n   \n📊 AVALIAÇÃO\n   Score de Risco: [XX] pontos - [CLASSIFICAÇÃO]\n   Tipo: [PERDA TOTAL / PERDA PARCIAL]\n   \n💰 VALORES\n   FIPE Referência: R$ XX.XXX,XX\n   Indenização Bruta: R$ XX.XXX,XX\n   Franquia: R$ X.XXX,XX\n   Indenização Líquida: R$ XX.XXX,XX\n\n✅ RECOMENDAÇÃO: [APROVAR / PENDENCIAR / INVESTIGAR / NEGAR]\n\n📝 FUNDAMENTAÇÃO\n   [2-3 linhas com justificativa]\n\n📋 PRÓXIMOS PASSOS\n   1. [ação]\n   2. [ação]\n   3. [ação]\n\n══════════════════════════════════════════════════════════\n                    PARECER FINALIZADO\n══════════════════════════════════════════════════════════\n```",
+      "tools": []
+    }
+  ],
+  "workflow": {
+    "type": "sequential",
+    "steps": [
+      {
+        "id": "step_extracao",
+        "type": "agent",
+        "agent": "extrator",
+        "input_template": "Extraia os dados do seguinte relato de sinistro:\n\n{{ input }}"
+      },
+      {
+        "id": "step_analise",
+        "type": "agent",
+        "agent": "especialista_auto",
+        "input_template": "Analise tecnicamente o sinistro com os seguintes dados extraídos:\n\n{{ step_extracao }}"
+      },
+      {
+        "id": "step_risco",
+        "type": "agent",
+        "agent": "avaliador_risco",
+        "input_template": "Calcule o score de risco para este sinistro:\n\n## Dados Extraídos:\n{{ step_extracao }}\n\n## Análise Técnica:\n{{ step_analise }}"
+      },
+      {
+        "id": "step_parecer",
+        "type": "agent",
+        "agent": "resumidor",
+        "input_template": "Gere o parecer executivo final:\n\n## Dados do Sinistro:\n{{ step_extracao }}\n\n## Análise Técnica:\n{{ step_analise }}\n\n## Avaliação de Risco:\n{{ step_risco }}"
+      }
+    ]
+  }
+}

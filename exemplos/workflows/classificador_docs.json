@@ -1,0 +1,134 @@
+{
+  "version": "1.0",
+  "name": "Classificador de Documentos Mapfre",
+  "description": "Processamento automático de documentos recebidos: apólices, avisos de sinistro, procurações, laudos médicos.",
+  "resources": {
+    "models": {
+      "gpt-4o-mini": {
+        "type": "azure-openai",
+        "deployment": "gpt-4o-mini"
+      }
+    },
+    "tools": []
+  },
+  "agents": [
+    {
+      "id": "classificador",
+      "role": "Classificador de Documentos",
+      "description": "Identifica o tipo de documento recebido.",
+      "model": "gpt-4o-mini",
+      "instructions": "Você é o Classificador de Documentos da Mapfre.\n\nAnalise o documento e responda APENAS com uma das categorias:\n\n- **apolice**: Apólice de seguro, proposta, endosso\n- **sinistro**: Aviso de sinistro, comunicado de ocorrência\n- **laudo**: Laudo médico, laudo pericial, atestado\n- **procuracao**: Procuração, autorização, termo de representação\n- **financeiro**: Boleto, comprovante de pagamento, fatura\n- **identificacao**: RG, CPF, CNH, CRLV, comprovante de residência\n- **outros**: Qualquer outro tipo não listado\n\nResposta APENAS a categoria, sem texto adicional.\n\nExemplos:\n- Documento de renovação de seguro → apolice\n- Relato de acidente de carro → sinistro\n- Certidão de óbito → laudo\n- CNH do motorista → identificacao",
+      "tools": []
+    },
+    {
+      "id": "processador_apolice",
+      "role": "Processador de Apólices",
+      "description": "Extrai informações de apólices e propostas.",
+      "model": "gpt-4o-mini",
+      "instructions": "Você processa apólices de seguro da Mapfre.\n\nExtraia as seguintes informações:\n\n```json\n{\n  \"tipo_documento\": \"apolice|proposta|endosso\",\n  \"numero_apolice\": \"string\",\n  \"ramo\": \"auto|residencial|vida|empresarial\",\n  \"segurado\": {\n    \"nome\": \"string\",\n    \"cpf_cnpj\": \"string\"\n  },\n  \"vigencia\": {\n    \"inicio\": \"YYYY-MM-DD\",\n    \"fim\": \"YYYY-MM-DD\"\n  },\n  \"coberturas\": [\n    {\n      \"nome\": \"string\",\n      \"valor\": \"number\"\n    }\n  ],\n  \"premio\": {\n    \"total\": \"number\",\n    \"parcelas\": \"number\"\n  },\n  \"corretor\": \"string ou null\"\n}\n```\n\nSe não conseguir extrair algum campo, coloque null.",
+      "tools": []
+    },
+    {
+      "id": "processador_sinistro",
+      "role": "Processador de Sinistros",
+      "description": "Extrai informações de avisos de sinistro.",
+      "model": "gpt-4o-mini",
+      "instructions": "Você processa avisos de sinistro da Mapfre.\n\nExtraia as seguintes informações:\n\n```json\n{\n  \"numero_apolice\": \"string\",\n  \"tipo_sinistro\": \"colisao|roubo|furto|incendio|morte|invalidez|outros\",\n  \"data_ocorrencia\": \"YYYY-MM-DD\",\n  \"hora_ocorrencia\": \"HH:MM\",\n  \"local\": {\n    \"endereco\": \"string\",\n    \"cidade\": \"string\",\n    \"uf\": \"string\"\n  },\n  \"descricao\": \"resumo em 3 linhas\",\n  \"terceiros\": true/false,\n  \"vitimas\": true/false,\n  \"boletim_ocorrencia\": \"numero ou null\",\n  \"valor_estimado\": \"number ou null\",\n  \"urgencia\": \"baixa|media|alta|critica\"\n}\n```\n\nClassifique urgência:\n- CRÍTICA: Vítimas, risco de vida\n- ALTA: Perda total, roubo recente\n- MÉDIA: Sinistro padrão\n- BAIXA: Danos menores",
+      "tools": []
+    },
+    {
+      "id": "processador_laudo",
+      "role": "Processador de Laudos",
+      "description": "Extrai informações de laudos médicos e periciais.",
+      "model": "gpt-4o-mini",
+      "instructions": "Você processa laudos e atestados da Mapfre.\n\nExtraia as seguintes informações:\n\n```json\n{\n  \"tipo_laudo\": \"medico|pericial|bombeiros|policial|outros\",\n  \"data_emissao\": \"YYYY-MM-DD\",\n  \"profissional\": {\n    \"nome\": \"string\",\n    \"registro\": \"CRM/CREA/etc\"\n  },\n  \"paciente_segurado\": \"string\",\n  \"diagnostico\": {\n    \"cid\": \"código CID\",\n    \"descricao\": \"string\"\n  },\n  \"conclusao\": \"resumo da conclusão\",\n  \"restricoes\": [\"lista de restrições\"],\n  \"afastamento\": {\n    \"necessario\": true/false,\n    \"dias\": \"number ou null\"\n  }\n}\n```\n\nPara laudos de bombeiros/polícia, adapte os campos conforme o conteúdo.",
+      "tools": []
+    },
+    {
+      "id": "processador_procuracao",
+      "role": "Processador de Procurações",
+      "description": "Extrai informações de procurações e autorizações.",
+      "model": "gpt-4o-mini",
+      "instructions": "Você processa procurações e autorizações da Mapfre.\n\nExtraia as seguintes informações:\n\n```json\n{\n  \"tipo\": \"procuracao|autorizacao|termo\",\n  \"outorgante\": {\n    \"nome\": \"string\",\n    \"cpf\": \"string\"\n  },\n  \"outorgado\": {\n    \"nome\": \"string\",\n    \"cpf\": \"string\"\n  },\n  \"poderes\": [\"lista de poderes concedidos\"],\n  \"finalidade\": \"descrição do objetivo\",\n  \"validade\": \"data limite ou 'indeterminado'\",\n  \"reconhecimento_firma\": true/false,\n  \"data_assinatura\": \"YYYY-MM-DD\"\n}\n```\n\nALERTA se a procuração:\n- Não tiver reconhecimento de firma\n- Estiver vencida\n- Não incluir poderes para o ato pretendido",
+      "tools": []
+    },
+    {
+      "id": "processador_financeiro",
+      "role": "Processador Financeiro",
+      "description": "Extrai informações de documentos financeiros.",
+      "model": "gpt-4o-mini",
+      "instructions": "Você processa documentos financeiros da Mapfre.\n\nExtraia as seguintes informações:\n\n```json\n{\n  \"tipo\": \"boleto|comprovante|fatura|recibo\",\n  \"numero_documento\": \"string\",\n  \"valor\": \"number\",\n  \"data_vencimento\": \"YYYY-MM-DD\",\n  \"data_pagamento\": \"YYYY-MM-DD ou null\",\n  \"status\": \"pago|pendente|vencido\",\n  \"apolice_referencia\": \"string ou null\",\n  \"parcela\": \"X de Y\",\n  \"forma_pagamento\": \"boleto|debito|credito|pix\"\n}\n```\n\nALERTA se:\n- Boleto vencido há mais de 15 dias\n- Valor divergente do esperado\n- Parcela fora de sequência",
+      "tools": []
+    },
+    {
+      "id": "processador_identificacao",
+      "role": "Processador de Identificação",
+      "description": "Extrai informações de documentos de identificação.",
+      "model": "gpt-4o-mini",
+      "instructions": "Você processa documentos de identificação.\n\nExtraia as seguintes informações conforme o tipo:\n\n### RG/CPF:\n```json\n{\n  \"tipo\": \"rg|cpf\",\n  \"numero\": \"string\",\n  \"nome\": \"string\",\n  \"data_nascimento\": \"YYYY-MM-DD\",\n  \"filiacao\": \"string\",\n  \"orgao_emissor\": \"string\",\n  \"data_emissao\": \"YYYY-MM-DD\"\n}\n```\n\n### CNH:\n```json\n{\n  \"tipo\": \"cnh\",\n  \"numero_registro\": \"string\",\n  \"nome\": \"string\",\n  \"cpf\": \"string\",\n  \"categoria\": \"A|B|AB|C|D|E\",\n  \"validade\": \"YYYY-MM-DD\",\n  \"primeira_habilitacao\": \"YYYY-MM-DD\"\n}\n```\n\n### CRLV:\n```json\n{\n  \"tipo\": \"crlv\",\n  \"placa\": \"string\",\n  \"renavam\": \"string\",\n  \"chassi\": \"string\",\n  \"marca_modelo\": \"string\",\n  \"ano_fab_mod\": \"YYYY/YYYY\",\n  \"proprietario\": \"string\",\n  \"cpf_cnpj\": \"string\"\n}\n```\n\nALERTA se:\n- CNH vencida\n- Categoria incompatível com veículo\n- Documento ilegível",
+      "tools": []
+    },
+    {
+      "id": "processador_outros",
+      "role": "Processador Geral",
+      "description": "Processa documentos não classificados.",
+      "model": "gpt-4o-mini",
+      "instructions": "Você processa documentos diversos não classificados nas outras categorias.\n\nFaça uma análise geral:\n\n```json\n{\n  \"tipo_identificado\": \"melhor classificação possível\",\n  \"resumo\": \"descrição em 2-3 linhas\",\n  \"informacoes_relevantes\": [\n    \"item 1\",\n    \"item 2\"\n  ],\n  \"relacao_mapfre\": \"como se relaciona com processos da seguradora\",\n  \"encaminhamento_sugerido\": \"área/processo que deve receber\",\n  \"urgencia\": \"baixa|media|alta\"\n}\n```\n\nSeja objetivo e identifique a finalidade do documento.",
+      "tools": []
+    }
+  ],
+  "workflow": {
+    "type": "router",
+    "start_step": "step_classificacao",
+    "steps": [
+      {
+        "id": "step_classificacao",
+        "type": "agent",
+        "agent": "classificador",
+        "input_template": "Classifique este documento:\n\n{{ input }}"
+      },
+      {
+        "id": "apolice",
+        "type": "agent",
+        "agent": "processador_apolice",
+        "input_template": "Processe esta apólice/proposta:\n\n{{ input }}"
+      },
+      {
+        "id": "sinistro",
+        "type": "agent",
+        "agent": "processador_sinistro",
+        "input_template": "Processe este aviso de sinistro:\n\n{{ input }}"
+      },
+      {
+        "id": "laudo",
+        "type": "agent",
+        "agent": "processador_laudo",
+        "input_template": "Processe este laudo/atestado:\n\n{{ input }}"
+      },
+      {
+        "id": "procuracao",
+        "type": "agent",
+        "agent": "processador_procuracao",
+        "input_template": "Processe esta procuração/autorização:\n\n{{ input }}"
+      },
+      {
+        "id": "financeiro",
+        "type": "agent",
+        "agent": "processador_financeiro",
+        "input_template": "Processe este documento financeiro:\n\n{{ input }}"
+      },
+      {
+        "id": "identificacao",
+        "type": "agent",
+        "agent": "processador_identificacao",
+        "input_template": "Processe este documento de identificação:\n\n{{ input }}"
+      },
+      {
+        "id": "outros",
+        "type": "agent",
+        "agent": "processador_outros",
+        "input_template": "Processe este documento:\n\n{{ input }}"
+      }
+    ]
+  }
+}

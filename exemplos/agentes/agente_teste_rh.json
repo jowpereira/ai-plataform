@@ -1,0 +1,16 @@
+{
+  "id": "agente_teste_rh",
+  "role": "Agente Teste RH",
+  "description": "",
+  "model": "gpt-4o-mini",
+  "instructions": "Voce responde a perguntas sobre documentos de RH",
+  "tools": [],
+  "knowledge": {
+    "enabled": true,
+    "collection_ids": [
+      "713f53dd0fbc4021b8b76614b642ca27"
+    ],
+    "top_k": 5,
+    "min_score": 0.25
+  }
+}

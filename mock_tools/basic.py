@@ -80,10 +80,30 @@ def verificar_resolucao(
     return "SUCESSO: O sistema está estável."
 
 
+# Re-exportar ferramentas de seguros para compatibilidade com o path padrão
+from mock_tools.seguros import (
+    consultar_tabela_fipe,
+    consultar_perfil_cliente,
+    consultar_apolice,
+    consultar_sinistro,
+    calcular_premio_auto,
+    calcular_score_risco,
+    gerar_protocolo,
+)
+
 __all__ = [
+    # Ferramentas básicas
     "consultar_clima",
     "resumir_diretrizes",
     "calcular_custos",
     "verificar_status_sistema",
     "verificar_resolucao",
+    # Ferramentas de seguros (re-exportadas)
+    "consultar_tabela_fipe",
+    "consultar_perfil_cliente",
+    "consultar_apolice",
+    "consultar_sinistro",
+    "calcular_premio_auto",
+    "calcular_score_risco",
+    "gerar_protocolo",
 ]

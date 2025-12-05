@@ -385,7 +385,7 @@ class ApiClient {
 
   async getAgentInfo(agentId: string): Promise<AgentInfo> {
     // Get detailed entity info from unified endpoint
-    return this.request<AgentInfo>(`/v1/entities/${agentId}/info?type=agent`);
+    return this.request<AgentInfo>(`/v1/entities/${encodeURIComponent(agentId)}/info?type=agent`);
   }
 
   async getWorkflowInfo(
@@ -393,13 +393,13 @@ class ApiClient {
   ): Promise<import("@/types").WorkflowInfo> {
     // Get detailed entity info from unified endpoint
     return this.request<import("@/types").WorkflowInfo>(
-      `/v1/entities/${workflowId}/info?type=workflow`
+      `/v1/entities/${encodeURIComponent(workflowId)}/info?type=workflow`
     );
   }
 
   // Delete entity
   async deleteEntity(entityId: string): Promise<void> {
-    await this.request(`/v1/entities/${entityId}`, {
+    await this.request(`/v1/entities/${encodeURIComponent(entityId)}`, {
       method: "DELETE",
     });
   }
@@ -407,7 +407,7 @@ class ApiClient {
   async reloadEntity(entityId: string): Promise<{ success: boolean; message: string }> {
     // Hot reload entity - clears cache and forces reimport on next access
     return this.request<{ success: boolean; message: string }>(
-      `/v1/entities/${entityId}/reload`,
+      `/v1/entities/${encodeURIComponent(entityId)}/reload`,
       {
         method: "POST",
       }
